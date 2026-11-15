@@ -1,0 +1,26 @@
+# 镜像只需要代码与少量研究输入；以下内容体积大且属于运行时数据，一律不进构建上下文
+data/
+artifacts/
+deliverables/
+山科数据集/
+文献/
+ppt_assets/
+
+# 版本控制与编辑器
+.git/
+.gitignore
+.workbuddy/
+.vscode/
+.idea/
+
+# 本地缓存与运行产物
+__pycache__/
+*.py[cod]
+*.npz
+*.pt
+*.pkl
+*.pptx
+*.pdf
+.pytest_cache/
+.venv/
+venv/
