@@ -33,10 +33,10 @@
 ```text
 工作台 /                 三域入口、资产与流水线
 实验
-  问卷管理 /surveys          选素材、生成分享链接、编辑/关闭
-  实验问卷 /responses       响应明细、完成率、CSV 导出
+  问卷管理 /surveys          选素材、自定义题目、生成分享链接、编辑/关闭
+  问卷数据 /survey-data      逐题答卷查看、元数据、质量诊断、导入导出
   素材库 /media              240 条视频/音乐、同步、预览、筛选
-  被试端 /q/{token}          打开链接、播放素材、填写问卷（无管理导航）
+  被试端 /q/{token}          打开链接、播放素材、填写问卷、回看本轮作答
 EEG 信号
   原始 EEG 处理 /eeg       EEGLAB 上传、滤波/ICA/分段/DE
   数据集与特征 /datasets     raw.npz、特征集、manifest
@@ -48,6 +48,10 @@ EEG 信号
   系统状态 /system          Python/平台、API、任务、数据边界
   历史预评价 /audit         一次性数据制备归档（不在主导航）
 ```
+
+> 旧版「现场实验」`/experiment` 与「实验问卷」`/responses` 页面已下线，均重定向到
+> `/survey-data`；带 `?session=<id>` 访问时定位到该轮答卷详情。会话 JSON、旧版
+> 只读 API 与 CSV 导出保留用于历史数据回溯，但不再提供新建现场实验的界面入口。
 
 ### 2.1 视觉语言
 
@@ -131,10 +135,16 @@ GET /api/jobs/{id}
 | POST | `/api/media/sync` | 从源目录同步到 `data/media` |
 | POST | `/api/public/surveys/{token}/sessions` | 被试打开链接后创建作答会话 |
 | GET | `/q/{token}/media/{session_id}` | 被试端 Range 流式播放 |
-| POST | `/api/experiment/sessions` | 旧版现场会话（保留兼容） |
+| POST | `/api/public/surveys/{token}/sessions/{id}/answers` | 按 schema 提交逐题答卷（写入 JSONL） |
+| GET | `/api/public/surveys/{token}/sessions/{id}/result` | 被试回看本轮逐题作答 |
+| GET | `/api/surveys/{id}/responses` | 答卷列表（完整记录） |
+| GET | `/api/surveys/{id}/responses/{response_id}` | 单份答卷详情 + 题目定义 |
+| GET | `/api/surveys/{id}/metadata` / `/quality` | 元数据与质量诊断 |
+| GET | `/api/surveys/{id}/responses.csv` / `/responses.clean.csv` | 问卷星兼容 / 分析宽表导出 |
+| POST | `/api/experiment/sessions` | 旧版现场会话（仅保留 API 兼容，无界面入口） |
 | GET | `/api/experiment/sessions/{id}` | 会话进度与当前视频 |
-| POST | `/api/experiment/sessions/{id}/responses` | 提交效价/唤醒/情绪/强度/熟悉度 |
-| GET | `/api/experiment/responses.csv` | 导出问卷 CSV |
+| POST | `/api/experiment/sessions/{id}/responses` | 旧版固定量表提交（兼容） |
+| GET | `/api/experiment/responses.csv` | 导出旧版固定量表 CSV |
 | POST | `/api/eeg/upload?filename=...` | 上传 `.set` 或 `.zip`，≤500 MB |
 | POST | `/api/eeg/process` | EEGLAB 清洗/分段/DE → job |
 | GET | `/api/eeg/uploads` | 最近 EEG 导入与状态 |
@@ -187,7 +197,7 @@ python -m webapp
 
 - 端口占用：`$env:EEG_WEB_PORT=8771; python -m webapp`
 - 只监听本机：默认 `127.0.0.1`；
-- 测试：`python -m unittest discover -s tests -v`（28 项，含 Web 与问卷/素材测试）；
+- 测试：`python -m unittest discover -s tests -v`（36 项，含 Web 与问卷/素材测试）；
 - 任务日志：`artifacts/web_jobs/`。
 
 ---
@@ -207,7 +217,7 @@ python -m webapp
 
 - 本文是 `02_软件需求规格说明书` FR-16（命令行）的 Web 扩展；
 - 页面/接口/任务模型可作为论文“系统实现”章节的截图与说明；
-- 测试结果并入 `09_测试计划与验收标准`（28 项）；
+- 测试结果并入 `09_测试计划与验收标准`（36 项）；
 - 数据边界并入 `05_数据审计报告` 与 `08_数据字典`；
 - 视觉设计不作为创新点，创新点仍是数据门控 + 双视角 + 多原型。
 

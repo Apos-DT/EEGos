@@ -33,7 +33,7 @@
 - `features`：`raw.npz` → 带通/陷波/重参考/重采样 → 5 频带 DE 特征。
 - `train`：被试依赖与 LOSO 跨被试训练；MLP、DGCNN、DualView-MultiProto、EEGNet；指标、置信区间、混淆矩阵、检查点。
 - `demo`：合成特征端到端跑通，生成自包含 HTML 报告，专门用于软件验收，不作为科研结论。
-- 28 项单元/集成测试全部通过（含 Web 与问卷/素材测试）；实际数据审计结果与既有质量报告的 22/29 条问题视频（音乐）计数一致。
+- 36 项单元/集成测试全部通过（含 Web 与问卷/素材测试）；实际数据审计结果与既有质量报告的 22/29 条问题视频（音乐）计数一致。
 
 ### 1.3 实际数据审计的关键结论
 
@@ -124,7 +124,7 @@ EEGos/
 │   ├── training/            # LOSO、指标、训练循环
 │   └── reporting/           # 图表与 HTML 报告
 ├── webapp/                  # FastAPI + Jinja2 + 原生 CSS/JS 本地控制台
-├── tests/                   # unittest 测试（28 项）
+├── tests/                   # unittest 测试（36 项）
 ├── scripts/                 # 图表、DOCX/PPT/工作簿构建脚本
 ├── configs/                 # 预留 YAML 配置（后续接入）
 │

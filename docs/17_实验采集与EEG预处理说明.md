@@ -2,7 +2,7 @@
 
 **文档编号**：17  
 **版本**：V1.0（2026-11-15）  
-**对应页面**：`/surveys`、`/media`、`/q/{token}`、`/responses`、`/eeg`
+**对应页面**：`/surveys`、`/survey-data`、`/media`、`/q/{token}`、`/eeg`
 
 ---
 
@@ -13,7 +13,7 @@
 ```text
 实验
   问卷管理 /surveys
-  实验问卷 /responses
+  问卷数据 /survey-data        逐题答卷、元数据、质量诊断
   素材库 /media
   被试端 /q/{token}
 
@@ -78,13 +78,15 @@ EEGLAB .set/.fdt ─┘
 ### 2.4 存储
 
 ```text
-data/surveys/<survey_id>.json          # 问卷方案、素材顺序、分享 token
-data/experiment/sessions/<session_id>.json  # 每名被试的一次作答
+data/surveys/<survey_id>.json               # 问卷方案、素材顺序、分享 token、版本化题目 schema
+data/experiment/sessions/<session_id>.json  # 会话播放进度（新版与旧版共用目录）
+data/survey_responses/<survey_id>.jsonl     # 新版逐题答卷，每行一条完整记录
+data/survey_imports/<batch_id>.*           # 历史问卷星导入批次与原始 CSV 副本
 ```
 
-每个会话包含：被试信息、刺激序列、当前进度、全部响应、时间戳、状态（running/completed/aborted）。
+会话包含：被试信息、刺激序列、当前进度、时间戳与状态（running/completed/aborted）。**新版自定义量表的答卷不写入会话的 `responses` 数组**，而是逐条落入统一 JSONL 仓库；会话只承担播放游标，进度按 `session_id` 回查 JSONL 统计。
 
-导出：`/api/experiment/responses.csv`，UTF-8 BOM，Excel 可直接打开。管理端在 `/surveys` 查看每份问卷的响应数，在 `/responses` 查看全部响应。
+导出：`/api/surveys/{survey_id}/responses.csv`（问卷星兼容）与 `responses.clean.csv`（分析宽表），均为 UTF-8 BOM；旧版固定量表历史数据仍可用 `/api/experiment/responses.csv` 导出。管理端在 `/surveys` 查看每份问卷的答卷数，在 `/survey-data` 逐题查看、筛选与下载单份答卷 JSON；被试完成一轮后可在 `/q/{token}` 完成页回看本轮作答。
 
 ### 2.5 与 EEG 对齐
 
