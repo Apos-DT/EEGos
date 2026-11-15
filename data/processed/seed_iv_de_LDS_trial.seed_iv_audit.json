@@ -1,0 +1,94 @@
+{
+  "dataset": "SEED-IV",
+  "root": "data\\SEED_IV",
+  "feature_key": "de_LDS",
+  "subjects": [
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08",
+    "S09",
+    "S10",
+    "S11",
+    "S12",
+    "S13",
+    "S14",
+    "S15"
+  ],
+  "n_subjects": 15,
+  "sessions": {
+    "session1": 15,
+    "session2": 15,
+    "session3": 15
+  },
+  "n_sessions": 3,
+  "n_trials": 1080,
+  "n_windows": 37575,
+  "channels": [
+    62
+  ],
+  "n_channels": 62,
+  "bands": [
+    "delta",
+    "theta",
+    "alpha",
+    "beta",
+    "gamma"
+  ],
+  "n_bands": 5,
+  "window_range": [
+    10,
+    64
+  ],
+  "class_names": [
+    "neutral",
+    "sad",
+    "fear",
+    "happy"
+  ],
+  "class_names_zh": [
+    "平静",
+    "悲伤",
+    "恐惧",
+    "快乐"
+  ],
+  "class_counts_trials": {
+    "neutral": 270,
+    "sad": 270,
+    "fear": 270,
+    "happy": 270
+  },
+  "per_subject_trials": {
+    "S10": 72,
+    "S11": 72,
+    "S12": 72,
+    "S13": 72,
+    "S14": 72,
+    "S15": 72,
+    "S01": 72,
+    "S02": 72,
+    "S03": 72,
+    "S04": 72,
+    "S05": 72,
+    "S06": 72,
+    "S07": 72,
+    "S08": 72,
+    "S09": 72
+  },
+  "subject_files_complete": true,
+  "units": "SEED-IV official DE/PSD features; 4-second windows; 5 bands",
+  "output": "data\\processed\\seed_iv_de_LDS_trial.npz",
+  "n_samples": 1080,
+  "n_features": 5,
+  "class_counts_windows": {
+    "neutral": 270,
+    "sad": 270,
+    "fear": 270,
+    "happy": 270
+  },
+  "manifest": "data\\processed\\seed_iv_de_LDS_trial.manifest.json"
+}
