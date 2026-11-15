@@ -212,15 +212,18 @@ Swagger：`/api/swagger`。
 
 ```powershell
 pip install -r requirements.txt
-python -m webapp          # 或 start.bat / ./start.sh
+start.bat                 # Windows 双击；Linux/macOS 用 ./start.sh
+python -m webapp          # 等价的手动方式
 # 打开 http://127.0.0.1:8770
 ```
 
-- 端口占用：`$env:EEG_WEB_PORT=8771; python -m webapp`
+一键脚本（`start.bat` / `start.sh` → `scripts/launch.py`）承担四件事：探测解释器（项目 `.venv` → `py -3.12` → `python`）、检测端口冲突（已在运行则复用，`--restart` 才会先停旧进程，停之前用 `/api/health` 确认是本工作台而非别的程序）、缺 Web 依赖时询问安装（不把 torch 拖进来）、服务就绪后自动开浏览器。中文提示全部由 Python 侧输出，`.bat` 保持 ASCII 以规避控制台代码页问题。
+
+- 端口占用：`start.bat --port 8771`，或 `$env:EEG_WEB_PORT=8771; python -m webapp`；
 - 监听地址：默认 `0.0.0.0`，因为被试扫码填答必须局域网可达；只在本机用可设 `$env:EEG_WEB_HOST="127.0.0.1"`；
 - 管理端口令：`$env:EEG_WEB_TOKEN="自定义字符串"`。启用后除 `/q`、`/api/public`、`/api/health` 外全部要求令牌，从链接带一次 `?token=` 即写入 Cookie（7 天）。**把服务暴露到局域网采集时必须设置**，否则同网段任何人可查看并导出全部答卷；
 - 容器：`docker build -t eeg-emostudio .`，运行示例见根目录 README；
-- 测试：`python -m unittest discover -s tests -v`（46 项，含 Web 与问卷/素材测试）；
+- 测试：`python -m unittest discover -s tests -v`（58 项，含 Web 与问卷/素材测试）；
 - 任务日志：`artifacts/web_jobs/`。
 
 ---
@@ -242,7 +245,7 @@ python -m webapp          # 或 start.bat / ./start.sh
 
 - 本文是 `02_软件需求规格说明书` FR-16（命令行）的 Web 扩展；
 - 页面/接口/任务模型可作为论文“系统实现”章节的截图与说明；
-- 测试结果并入 `09_测试计划与验收标准`（46 项）；
+- 测试结果并入 `09_测试计划与验收标准`（58 项）；
 - 数据边界并入 `05_数据审计报告` 与 `08_数据字典`；
 - 视觉设计不作为创新点，创新点仍是数据门控 + 双视角 + 多原型。
 

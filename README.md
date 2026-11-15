@@ -33,7 +33,7 @@
 - `features`：`raw.npz` → 带通/陷波/重参考/重采样 → 5 频带 DE 特征。
 - `train`：被试依赖与 LOSO 跨被试训练；MLP、DGCNN、DualView-MultiProto、EEGNet；指标、置信区间、混淆矩阵、检查点。
 - `demo`：合成特征端到端跑通，生成自包含 HTML 报告，专门用于软件验收，不作为科研结论。
-- 46 项单元/集成测试全部通过（含 Web 与问卷/素材测试）；实际数据审计结果与既有质量报告的 22/29 条问题视频（音乐）计数一致。
+- 58 项单元/集成测试全部通过（含 Web 与问卷/素材测试）；实际数据审计结果与既有质量报告的 22/29 条问题视频（音乐）计数一致。
 
 ### 1.3 实际数据审计的关键结论
 
@@ -85,8 +85,21 @@ python -m unittest discover -s tests -v
 
 ### Web 控制台
 
+**一键启动**：Windows 双击根目录的 `start.bat`，Linux/macOS 执行 `./start.sh`。脚本会自动探测解释器（优先项目 `.venv`，其次 `py -3.12`），启动后自动打开浏览器；若端口已被占用会直接复用已运行的服务，而不是报 `address already in use`。
+
 ```bash
-python -m webapp          # 或 Windows 双击 start.bat / Linux、macOS 执行 ./start.sh
+start.bat                  # Windows（可带参数，见下）
+./start.sh                 # Linux / macOS / WSL
+
+start.bat --restart        # 先停掉旧进程再启动（改完 Python 代码后用这个）
+start.bat --port 8771      # 临时换端口
+start.bat --no-browser     # 不自动开浏览器
+```
+
+也可以直接用 Python 启动（与脚本完全等价）：
+
+```bash
+python -m webapp
 # 管理端   http://127.0.0.1:8770/surveys
 # 被试端   问卷里生成的 /q/<token> 分享链接（手机需与电脑同一局域网）
 ```
@@ -105,6 +118,8 @@ python -m webapp
 | `EEG_WEB_PORT` | `8770` | 端口 |
 | `EEG_WEB_TOKEN` | 空（不校验） | 管理端口令；`/q`、`/api/public`、`/api/health` 永远公开 |
 | `EEG_WEB_RELOAD` | `0` | 设 `1` 后改代码自动重载（仅开发用） |
+| `EEG_PYTHON` | 自动探测 | 启动器使用的解释器路径（如 `C:\Python312\python.exe`） |
+| `EEG_NO_BROWSER` | 空 | 设 `1` 后启动不自动打开浏览器 |
 | `EEG_DATA_DIR` / `EEG_ARTIFACTS_DIR` / `EEG_DELIVERABLES_DIR` | `data/` `artifacts/` `deliverables/` | 数据外挂（外部磁盘、容器卷） |
 
 容器方式（镜像只含代码，数据留在宿主机）：
@@ -149,7 +164,7 @@ EEGos/
 │   ├── training/            # LOSO、指标、训练循环
 │   └── reporting/           # 图表与 HTML 报告
 ├── webapp/                  # FastAPI + Jinja2 + 原生 CSS/JS 本地控制台
-├── tests/                   # unittest 测试（46 项）
+├── tests/                   # unittest 测试（58 项）
 ├── scripts/                 # 图表、DOCX/PPT/工作簿构建脚本
 ├── configs/                 # 预留 YAML 配置（后续接入）
 │

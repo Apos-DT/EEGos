@@ -345,7 +345,7 @@ def slide_one_page(prs):
         textbox(slide, x, stat_y, 2.4, 0.48, value, 27, INK, True)
         textbox(slide, x, stat_y + 0.48, 2.4, 0.22, label, 8.3, MUTED)
 
-    textbox(slide, 0.7, 6.45, 11.9, 0.26, "目标不是“再跑一个模型”，而是让一次情绪实验从材料到结论都可复核；46 项自动化测试通过。", 9.6, TEAL, True)
+    textbox(slide, 0.7, 6.45, 11.9, 0.26, "目标不是“再跑一个模型”，而是让一次情绪实验从材料到结论都可复核；58 项自动化测试通过。", 9.6, TEAL, True)
     notes(slide, "先用一页说明全貌：数据制备、模型训练、工程证据三块。下面的流水线是后面每一页展开的顺序。")
 
     return slide
@@ -685,7 +685,7 @@ def slide_next(prs):
     background(slide)
     header(slide, "Status & next", "现在能做什么，下一步还缺什么", "系统侧已闭环；科研侧已有 SEED-IV 真实基线", 14)
     cols = [
-        ("已具备", "✓ SEED-IV 15 被试接入\n✓ 1,080 trial / 37,575 窗口\n✓ 数据审计与质量门控\n✓ 80 条平衡选材\n✓ LOSO 训练与报告\n✓ 46 项自动化测试", "E8F3F1", TEAL),
+        ("已具备", "✓ SEED-IV 15 被试接入\n✓ 1,080 trial / 37,575 窗口\n✓ 数据审计与质量门控\n✓ 80 条平衡选材\n✓ LOSO 训练与报告\n✓ 58 项自动化测试", "E8F3F1", TEAL),
         ("关键缺口", "! 自采 EEG 尚未接入\n! DualView 27.69%，待改进\n! 26/120 音乐片段待统一\n! 标签体系与 60 s 规则\n! 窗口级/域适应未完成", "FFF6E8", AMBER),
         ("下一步", "1. 窗口级 LOSO 基线\n2. 域适应 / 原型改进\n3. 自采 EEG 预实验\n4. 主实验 + 消融 + 统计\n5. 论文第 5 章", "EAF0FF", BLUE),
     ]
@@ -724,7 +724,7 @@ def slide_summary(prs):
     items = [
         ("01", "数据侧", "240 条材料、2,356 条问卷、SEED-IV 1,080 trial 已接入。"),
         ("02", "模型侧", "raw.npz → 5 频带 DE → LOSO；真实 MLP 42.78%。"),
-        ("03", "工程侧", "8 个页面、46 项测试、manifest/哈希/报告。"),
+        ("03", "工程侧", "8 个页面、58 项测试、manifest/哈希/报告。"),
     ]
     for i, (num, title, body) in enumerate(items):
         y = 3.0 + i * 0.95

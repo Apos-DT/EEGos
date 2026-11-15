@@ -3,10 +3,13 @@
 本地研究控制台，FastAPI + Jinja2 + 原生 CSS/JS；主界面无 CDN、无 node 构建、无外部数据库。
 
 ```powershell
-python -m webapp      # 或 start.bat / ./start.sh；容器方式见根目录 README
+start.bat             # Windows 双击；./start.sh 用于 Linux/macOS
+python -m webapp      # 等价，容器方式见根目录 README
 # 管理端 http://127.0.0.1:8770/surveys
 # 被试端 /q/<token>（手机需与电脑同一局域网）
 ```
+
+`start.bat` / `start.sh` 只做解释器探测，其余逻辑在 `scripts/launch.py`：端口被占用时复用已运行的服务（`--restart` 才会停掉旧进程再启动，且会先用 `/api/health` 确认那是本工作台）、缺 Web 依赖时询问是否安装、服务就绪后自动开浏览器。中文提示统一由 Python 侧输出，避免 `.bat` 的代码页乱码。
 
 配置项（`EEG_WEB_HOST` / `EEG_WEB_PORT` / `EEG_WEB_TOKEN` / 数据目录外挂）见根目录 README 的「Web 控制台」一节。
 
@@ -94,4 +97,4 @@ data/experiment/sessions/                    会话播放进度（新版/旧版�
 
 **新增 API**：`/api/questionnaire/templates`、`/api/surveys/{id}/schema|metadata|quality|responses|responses/{response_id}|responses.csv|responses.clean.csv`、`/api/surveys/import/preview|commit`、`/api/surveys/imports`、`/api/surveys/imports/{batch}/source.csv`、`/api/public/surveys/{token}/sessions/{id}/answers|result`。
 
-旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道，公开页会自动回退到固定表单；其历史会话数据仍可通过 `/api/experiment/responses.csv` 导出。全部 46 项自动化测试通过。
+旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道，公开页会自动回退到固定表单；其历史会话数据仍可通过 `/api/experiment/responses.csv` 导出。全部 58 项自动化测试通过。

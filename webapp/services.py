@@ -700,7 +700,7 @@ def overview() -> dict[str, Any]:
             "sessions": experiment["sessions"],
             "responses": experiment["responses"],
             "participants": experiment["participants"],
-            "tests": 46,
+            "tests": 58,
         },
         "quality_grades": _grade_counts(quality),
         "quality_by_modality": quality_by_modality,
