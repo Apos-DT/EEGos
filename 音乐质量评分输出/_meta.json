@@ -1,0 +1,19 @@
+{
+  "n_raw": 1087,
+  "n_dedup": 1072,
+  "n_analysis": 953,
+  "n_songs": 120,
+  "n_variants": 129,
+  "excluded": [
+    "刘佳悦"
+  ],
+  "n_raters": 8,
+  "grade_counts": {
+    "S": 9,
+    "A": 21,
+    "B": 39,
+    "C": 27,
+    "D": 24
+  },
+  "B": 500
+}

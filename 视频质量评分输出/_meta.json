@@ -1,0 +1,18 @@
+{
+  "n_raw": 1269,
+  "n_dedup": 1227,
+  "n_analysis": 1227,
+  "n_songs": 120,
+  "n_variants": 146,
+  "excluded": [],
+  "n_raters": 11,
+  "n_target": 10.0,
+  "grade_counts": {
+    "S": 17,
+    "A": 27,
+    "B": 26,
+    "C": 24,
+    "D": 26
+  },
+  "B": 500
+}
