@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon %}
+{% block title %}问卷数据与元数据 · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/surveys">{{ icon('play', 15) }} 问卷管理</a>
+<a class="btn btn-primary" href="/surveys/new">{{ icon('play', 15) }} 新建问卷</a>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>问卷与答卷元数据</h2><p>问卷定义、答卷、素材三者通过 schema 版本与原始行号关联；所有元数据以 JSON / JSONL 本地保存。</p></div>
+    <span class="badge badge-blue" id="schemaVersionBadge">—</span>
+  </div>
+  <div class="survey-select-row">
+    <select id="surveySelect" class="select" style="min-width:340px">
+      <option value="">请选择问卷…</option>
+      {% for s in surveys %}
+      <option value="{{ s.id }}" {% if s.id == selected %}selected{% endif %}>{{ s.title }} · {{ s.status_label }} · {{ s.n_responses }} 份</option>
+      {% endfor %}
+    </select>
+    <a class="btn btn-soft btn-sm" id="exportWjx" href="#">{{ icon('download', 14) }} 问卷星兼容 CSV</a>
+    <a class="btn btn-soft btn-sm" id="exportClean" href="#">{{ icon('download', 14) }} 分析宽表</a>
+    <a class="btn btn-soft btn-sm" id="openSchema" href="#">{{ icon('settings', 14) }} 题目定义</a>
+  </div>
+  <div class="form-error" id="pageError" hidden></div>
+</section>
+
+<div class="stats-grid mt-4" id="statCards">
+  <article class="stat-card" style="--tint:#e9fbf7;--tone:#0c7368"><div class="stat-top"><span>答卷总数</span><span class="stat-icon">{{ icon('file', 16) }}</span></div><div class="stat-value" id="statResponses">—</div><div class="stat-foot"><span>含重复与异常</span></div></article>
+  <article class="stat-card" style="--tint:#eaf0ff;--tone:#2f6fed"><div class="stat-top"><span>有效答卷</span><span class="stat-icon">{{ icon('check', 16) }}</span></div><div class="stat-value" id="statValid">—</div><div class="stat-foot"><span>可用于质量评分</span></div></article>
+  <article class="stat-card" style="--tint:#fff4e2;--tone:#b45309"><div class="stat-top"><span>评分者 / 素材</span><span class="stat-icon">{{ icon('layers', 16) }}</span></div><div class="stat-value" id="statCoverage">—</div><div class="stat-foot"><span>覆盖情况</span></div></article>
+  <article class="stat-card" style="--tint:#f4f0ff;--tone:#6941c6"><div class="stat-top"><span>量表版本</span><span class="stat-icon">{{ icon('activity', 16) }}</span></div><div class="stat-value" id="statVersion">—</div><div class="stat-foot"><span id="statHash">—</span></div></article>
+</div>
+
+<div class="tabs mt-4" id="dataTabs">
+  <button class="tab active" type="button" data-tab="overview">题目与元数据</button>
+  <button class="tab" type="button" data-tab="responses">答卷明细</button>
+  <button class="tab" type="button" data-tab="quality">质量诊断</button>
+  <button class="tab" type="button" data-tab="imports">导入批次</button>
+  <button class="tab" type="button" data-tab="import">导入历史问卷</button>
+</div>
+
+<section class="panel mt-4" id="tab-overview"><div id="overviewBody"><div class="empty" style="padding:30px"><p>请先选择一份问卷。</p></div></div></section>
+<section class="panel mt-4" id="tab-responses" hidden><div class="panel-head"><div><h2>答卷明细</h2><p>每条记录保留提交时间、用时、来源、脱敏 IP、批次与原始行号。</p></div><span class="badge badge-gray" id="responseCount">—</span></div><div id="responsesBody" class="table-scroll"></div></section>
+<section class="panel mt-4" id="tab-quality" hidden><div id="qualityBody"></div></section>
+<section class="panel mt-4" id="tab-imports" hidden><div class="panel-head"><div><h2>导入批次</h2><p>每批保留原始 CSV 副本与文件指纹，可按原始行号回查。</p></div></div><div id="importsBody" class="table-scroll"></div></section>
+
+<section class="panel mt-4" id="tab-import" hidden>
+  <div class="panel-head"><div><h2>导入问卷星导出 CSV</h2><p>两步导入：先解析并确认字段映射，再写入答卷仓库。UTF-8 BOM / GB18030 自动识别。</p></div></div>
+  <div class="import-grid">
+    <div class="field"><label for="importFile">导出的 CSV 文件</label><input type="file" id="importFile" accept=".csv,text/csv"></div>
+    <div class="field"><label for="importKind">素材类型</label><select id="importKind" class="select"><option value="">按文件名自动判断</option><option value="video">视频</option><option value="audio">音乐</option></select></div>
+    <button class="btn btn-primary" type="button" id="importPreviewBtn">解析并预览字段</button>
+  </div>
+  <div id="importPreviewBox" hidden class="mt-4">
+    <h3>字段映射预览</h3>
+    <p class="hint" id="importSummary"></p>
+    <div class="table-scroll"><table class="data" id="importMapTable"><thead><tr><th>#</th><th>原始表头</th><th>题型</th><th>字段角色</th><th>选项数</th><th>示例值</th></tr></thead><tbody></tbody></table></div>
+    <div class="form-grid compact mt-4">
+      <div class="field"><label for="importTarget">导入到</label><select id="importTarget" class="select"><option value="">新建归档问卷</option>{% for s in surveys %}{% if s.origin and s.origin.type == 'wjx_import' %}<option value="{{ s.id }}">{{ s.title }}</option>{% endif %}{% endfor %}</select></div>
+      <div class="field"><label for="importTitle">新问卷标题</label><input id="importTitle" maxlength="120" placeholder="留空则使用文件名"></div>
+    </div>
+    <label class="checkline"><input type="checkbox" id="importDedup" checked> 标记重复提交（同一评分者 × 素材保留首次，其余只标记不删除）</label>
+    <button class="btn btn-primary" type="button" id="importCommitBtn" style="margin-top:12px">确认导入 {{ icon('arrow', 14) }}</button>
+    <div class="form-error" id="importError" hidden></div>
+    <div id="importResult" class="mt-4"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.__IMPORT_BATCHES__ = {{ (imports|default([], true))|tojson }};</script>
+<script src="{{ url_for('static', path='js/survey_data.js') }}"></script>
+{% endblock %}

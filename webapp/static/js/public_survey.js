@@ -10,6 +10,9 @@
   const question = $("publicQuestion");
   const complete = $("publicComplete");
   const responseForm = $("publicResponseForm");
+  const schema = window.__SURVEY_SCHEMA__ || [];
+  const schemaForm = $("schemaResponseForm");
+  const useSchema = schema.length > 0;
 
   const startForm = $("publicStartForm");
   if (startForm && startForm.dataset.requireCode === "0") {
@@ -47,6 +50,12 @@
 
   function resetForm() {
     responseForm.reset();
+    if (schemaForm) {
+      schemaForm.reset();
+      schemaForm.querySelectorAll("input[data-rating]").forEach((input) => {
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
     $("publicValence").value = "5";
     $("publicArousal").value = "5";
     $("publicIntensity").value = "3";
@@ -177,4 +186,103 @@
       button.disabled = false;
     }
   });
+
+  // ------------------------------------------------------------------
+  // 自定义量表：按 schema 动态渲染（旧版问卷走上面的固定表单）
+  // ------------------------------------------------------------------
+  const AUTO_ROLES = ["rater", "stimulus"];
+  function escHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[ch]);
+  }
+
+  function questionHtml(q, i) {
+    const id = escHtml(q.id);
+    const need = q.required === false ? "" : "required";
+    let body;
+    if (q.type === "text") {
+      body = `<div class="field"><input name="${id}" maxlength="200" ${need} placeholder="请填写"></div>`;
+    } else if (q.type === "textarea") {
+      body = `<div class="field"><textarea name="${id}" rows="3" ${need} placeholder="请填写"></textarea></div>`;
+    } else if (q.type === "rating") {
+      const low = Number(q.min ?? 1), high = Number(q.max ?? 9);
+      const mid = Math.round((low + high) / 2);
+      const buttons = Array.from({ length: high - low + 1 }, (_, k) =>
+        `<button type="button" data-value="${low + k}">${low + k}</button>`).join("");
+      body = `<div class="rating-block">
+        <div class="rating-label"><span>${escHtml(q.min_label || "最低")}</span><strong data-rating-value="${id}">${mid}</strong><span>${escHtml(q.max_label || "最高")}</span></div>
+        <input type="range" name="${id}" min="${low}" max="${high}" step="1" value="${mid}" data-rating="${id}" aria-label="${escHtml(q.title)}">
+        <div class="rating-scale" data-scale="${id}" role="group">${buttons}</div>
+      </div>`;
+    } else if (q.type === "single") {
+      body = `<div class="emotion-grid">${(q.options || []).map((opt, k) =>
+        `<label class="emotion-option"><input type="radio" name="${id}" value="${escHtml(opt)}" ${need && k === 0 ? "required" : ""}><span>${escHtml(opt)}</span></label>`).join("")}</div>`;
+    } else {
+      body = `<div class="emotion-grid">${(q.options || []).map((opt) =>
+        `<label class="emotion-option"><input type="checkbox" name="${id}" value="${escHtml(opt)}"><span>${escHtml(opt)}</span></label>`).join("")}</div>`;
+    }
+    return `<div class="dynamic-question">
+      <div class="question-head"><div><span class="badge badge-blue">第 ${i + 1} 题</span><h3>${escHtml(q.title)}</h3></div><span class="hint">${q.required === false ? "选答" : "必答"}</span></div>
+      ${body}
+    </div>`;
+  }
+
+  if (useSchema && schemaForm) {
+    const visible = schema.filter((q) => !AUTO_ROLES.includes(q.role));
+    responseForm.hidden = true;
+    schemaForm.hidden = false;
+    schemaForm.innerHTML = visible.map(questionHtml).join("") +
+      `<p class="hint">素材编号与评分者由系统自动记录，无需填写。</p>
+       <button class="btn btn-primary btn-block" type="submit" id="schemaSubmit">提交并继续</button>
+       <div class="form-error" id="schemaResponseError" hidden></div>`;
+
+    schemaForm.addEventListener("click", (event) => {
+      const button = event.target.closest(".rating-scale button");
+      if (!button) return;
+      const scale = button.closest(".rating-scale");
+      const input = schemaForm.querySelector(`input[data-rating="${scale.dataset.scale}"]`);
+      if (input) {
+        input.value = button.dataset.value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+
+    schemaForm.addEventListener("input", (event) => {
+      const input = event.target.closest("input[data-rating]");
+      if (!input) return;
+      const id = input.dataset.rating;
+      const valueNode = schemaForm.querySelector(`[data-rating-value="${id}"]`);
+      if (valueNode) valueNode.textContent = input.value;
+      schemaForm.querySelectorAll(`.rating-scale[data-scale="${id}"] button`).forEach((b) => {
+        b.classList.toggle("active", b.dataset.value === input.value);
+      });
+    });
+
+    schemaForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!state.session) return;
+      setError("schemaResponseError", "");
+      const button = $("schemaSubmit");
+      button.disabled = true;
+      const data = new FormData(schemaForm);
+      const answers = {};
+      visible.forEach((q) => {
+        const all = data.getAll(q.id);
+        answers[q.id] = q.type === "multiple" ? all : (all[0] ?? "");
+      });
+      try {
+        const payload = await api(`/api/public/surveys/${encodeURIComponent(token)}/sessions/${encodeURIComponent(state.session.id)}/answers`, {
+          method: "POST",
+          body: JSON.stringify({ answers, watch_seconds: state.watchSeconds }),
+        });
+        renderSession(payload.session);
+        EEG.toast("问卷已保存", "success");
+      } catch (err) {
+        setError("schemaResponseError", err.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
 })();

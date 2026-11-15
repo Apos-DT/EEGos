@@ -33,6 +33,24 @@
 
   <section class="panel mt-4">
     <div class="panel-head">
+      <div><h2>题目设计</h2><p>自定义题干、题型与选项；标注「字段角色」的题目才能参与归一化与质量评分。</p></div>
+      <div class="builder-head-actions">
+        <span class="badge badge-gray" id="questionCount">0 题</span>
+        <select id="templatePicker" class="select" style="width:180px">
+          <option value="">加载标准量表…</option>
+          <option value="video">视频版 · 12 题</option>
+          <option value="audio">音乐版 · 12 题</option>
+        </select>
+        <button class="btn btn-soft btn-sm" type="button" id="addQuestion">+ 添加题目</button>
+      </div>
+    </div>
+    <div id="questionList" class="q-editor"></div>
+    <div class="panel-foot"><span>修改题目会自动提升量表版本，已有答卷仍按当时的版本与指纹追溯。</span></div>
+    <div class="form-error" id="schemaError" hidden></div>
+  </section>
+
+  <section class="panel mt-4">
+    <div class="panel-head">
       <div><h2>选择素材</h2><p>来自固定目录 <span class="mono">data/media</span>；视频与音乐都可以选。</p></div>
       <span class="badge badge-gray">{{ data["items"]|length }} 个素材</span>
     </div>
@@ -82,5 +100,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script>window.__QUESTIONNAIRE__ = {{ (questionnaire|default({}, true))|tojson }}; window.__SURVEY_SCHEMA__ = {{ (survey_schema|default([], true))|tojson }}; window.__SURVEY_KIND__ = {{ (survey.get('kind', 'video') if survey else 'video')|tojson }};</script>
 <script src="{{ url_for('static', path='js/survey_builder.js') }}"></script>
 {% endblock %}

@@ -3,6 +3,8 @@
 {% block title %}问卷管理 · {{ app_name }}{% endblock %}
 
 {% block actions %}
+<a class="btn btn-soft" href="/survey-data">{{ icon('layers', 15) }} 问卷数据与元数据</a>
+<a class="btn btn-soft" href="/survey-data">{{ icon('layers', 15) }} 数据与元数据</a>
 <a class="btn btn-soft" href="/media">{{ icon('sliders', 15) }} 素材库</a>
 <a class="btn btn-primary" href="/surveys/new">{{ icon('play', 15) }} 新建问卷</a>
 {% endblock %}
@@ -48,12 +50,14 @@
       <div class="survey-main">
         <div class="survey-title-line">
           <h3>{{ survey.title }}</h3>
-          <span class="badge {% if survey.status == 'open' %}badge-green{% else %}badge-gray{% endif %}">{{ '开放' if survey.status == 'open' else '已关闭' }}</span>
+          <span class="badge {% if survey.status == 'open' %}badge-green{% elif survey.status == 'archived' %}badge-amber{% else %}badge-gray{% endif %}">{{ survey.status_label }}</span>
+          <span class="badge badge-gray">量表 v{{ survey.schema_version }}</span>
         </div>
         <p>{{ survey.description or '未填写说明' }}</p>
         <div class="survey-meta">
           <span>{{ survey.n_materials }} 个素材</span>
           <span>{{ survey.n_video }} 视频 / {{ survey.n_audio }} 音乐</span>
+          <span>{{ survey.n_questions }} 道题</span>
           <span>{{ survey.n_responses }} 份响应</span>
           <span class="mono">{{ survey.created_at[:16].replace('T', ' ') }}</span>
         </div>
@@ -66,6 +70,7 @@
       <div class="survey-actions">
         <a class="btn btn-soft btn-sm" href="/surveys/{{ survey.id }}/edit">{{ icon('settings', 12) }} 编辑</a>
         <button class="btn btn-soft btn-sm toggle-survey" type="button" data-id="{{ survey.id }}">{{ '关闭' if survey.status == 'open' else '重新开放' }}</button>
+        <a class="btn btn-soft btn-sm" href="/survey-data?survey_id={{ survey.id }}">{{ icon('layers', 12) }} 数据与元数据</a>
         <a class="btn btn-soft btn-sm" href="/responses">{{ icon('chart', 12) }} 查看响应</a>
       </div>
     </article>
