@@ -19,6 +19,8 @@ from .questionnaire import (
     default_schema,
     normalize_schema,
     schema_fingerprint,
+    schema_for_survey,
+    survey_kind,
 )
 from .services import ROOT
 
@@ -99,20 +101,17 @@ def _response_count(survey_id: str) -> int:
 def infer_kind(survey: dict[str, Any]) -> str:
     """旧问卷没有 kind 字段时，按素材模态推断量表版本。"""
 
-    explicit = survey.get("kind")
-    if explicit in {"video", "audio"}:
-        return explicit
-    materials = survey.get("materials") or []
-    return "audio" if materials and all(item.get("modality") == "audio" for item in materials) else "video"
+    return survey_kind(survey)
 
 
 def get_schema(survey: dict[str, Any]) -> list[dict[str, Any]]:
-    """读取题目定义；对旧版问卷惰性补默认量表，不改写历史文件。"""
+    """读取题目定义；对旧版问卷惰性补默认量表，不改写历史文件。
 
-    raw = survey.get("schema")
-    if raw:
-        return normalize_schema(raw)
-    return default_schema(infer_kind(survey))
+    与 survey_meta 的写/导出侧共用 questionnaire.schema_for_survey，
+    保证同一份旧问卷在所有端点拿到一致的题目定义。
+    """
+
+    return schema_for_survey(survey)
 
 
 def _public(survey: dict[str, Any]) -> dict[str, Any]:
@@ -255,12 +254,15 @@ def update_survey(
     target_n: int | None = None,
     require_code: bool | None = None,
     allow_multiple: bool | None = None,
+    kind: str = "",
 ) -> dict[str, Any]:
     survey = load_survey(survey_id)
     survey["title"] = title.strip() or survey["title"]
     survey["description"] = (description or "").strip()[:1000]
     if material_ids is not None:
         survey["materials"] = _material_items(material_ids)
+    if kind in {"video", "audio"}:
+        survey["kind"] = kind
     if target_n is not None:
         survey["target_n"] = max(0, int(target_n))
     settings = survey.get("settings", {})
@@ -322,7 +324,11 @@ def list_surveys() -> list[dict[str, Any]]:
 
 def toggle_survey(survey_id: str) -> dict[str, Any]:
     survey = load_survey(survey_id)
-    survey["status"] = "closed" if survey.get("status", "open") == "open" else "open"
+    status = survey.get("status", "open")
+    # 历史导入问卷是归档证据，不等于「被关闭的在线问卷」，不能被重新发布。
+    if status == "archived":
+        raise ValueError("历史导入问卷不可重新开放，请另建问卷发布")
+    survey["status"] = "closed" if status == "open" else "open"
     _save(survey)
     return _public(survey)
 
@@ -338,6 +344,8 @@ def start_response(
     consent: bool = True,
 ) -> dict[str, Any]:
     survey = survey_by_token(token)
+    if survey.get("status") == "archived":
+        raise ValueError("历史导入问卷不接受新答卷")
     if survey.get("status") != "open":
         raise ValueError("问卷已关闭")
     code = re.sub(r"[^A-Za-z0-9_-]+", "", participant_code or "").strip()
@@ -417,8 +425,15 @@ def public_media(token: str, session_id: str) -> tuple[Path, str]:
 
 
 def public_submit(token: str, session_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    """旧版固定量表通道，保留给既有问卷与测试，不改动。"""
+    """旧版固定量表通道，仅保留给无 schema 的旧问卷。
 
+    新版自定义量表问卷必须走 submit_schema_answers，否则同一会话的答卷会
+    分裂在 session.responses（5 个硬编码字段）与统一 JSONL 仓库两处。
+    """
+
+    survey = survey_by_token(token)
+    if survey.get("schema"):
+        raise ValueError("该问卷使用自定义量表，请通过新版答卷通道提交")
     validate_public_session(token, session_id)
     return submit_response(session_id, data)
 

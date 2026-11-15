@@ -4,7 +4,7 @@
 
 {% block actions %}
 <a class="btn btn-soft" href="/audit">{{ icon('shield', 15) }} 历史预评价</a>
-<a class="btn btn-primary" href="/experiment">{{ icon('play', 15) }} 去实验</a>
+<a class="btn btn-primary" href="/surveys/new">{{ icon('play', 15) }} 用这批材料建问卷</a>
 {% endblock %}
 
 {% block content %}
@@ -65,7 +65,7 @@
   </div>
   <div class="panel-foot">
     <span>选材规则：模态 × 四象限分层，S→A→B→C→D；不在本页重复改规则。</span>
-    <a class="panel-link" href="/experiment">用这批材料开始实验 {{ icon('arrow', 13) }}</a>
+    <a class="panel-link" href="/surveys/new">用这批材料新建问卷 {{ icon('arrow', 13) }}</a>
   </div>
 </section>
 

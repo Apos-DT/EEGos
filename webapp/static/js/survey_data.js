@@ -1,14 +1,24 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
+  const TYPE_LABELS = {
+    text: "单行填空", rating: "量表评分", single: "单选",
+    multiple: "多选", textarea: "多行文本",
+  };
+  const params = new URLSearchParams(window.location.search);
   const state = {
     surveyId: "",
     metadata: null,
     quality: null,
     responses: [],
+    responseTotal: 0,
     batches: window.__IMPORT_BATCHES__ || [],
     stagingId: "",
     preview: null,
+    deepResponseId: params.get("response_id") || "",
+    sessionFilter: params.get("session_id") || "",
+    detailRecord: null,
+    detailId: "",
   };
   const TABS = ["overview", "responses", "quality", "imports", "import"];
 
@@ -18,6 +28,12 @@
     })[ch]);
   }
   function fmt(value) { return value == null || value === "" ? "—" : esc(String(value)); }
+  function fmtValue(value) {
+    if (value == null || value === "") return "—";
+    if (Array.isArray(value)) return value.length ? value.join("、") : "—";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
   function setError(id, message) {
     const node = $(id);
     if (!node) return;
@@ -30,6 +46,16 @@
     return rows.length ? `<table class="data">${head}${body}</table>` : `<div class="empty" style="padding:26px"><p>暂无数据</p></div>`;
   }
   function badge(text, tone) { return `<span class="badge ${tone === "green" ? "badge-green" : tone === "amber" ? "badge-amber" : "badge-gray"}">${esc(text)}</span>`; }
+  function switchTab(key) {
+    document.querySelectorAll("#dataTabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === key));
+    TABS.forEach((name) => { $("tab-" + name).hidden = name !== key; });
+  }
+  function setUrl(updates, removals = []) {
+    const url = new URL(window.location.href);
+    Object.entries(updates).forEach(([k, v]) => url.searchParams.set(k, v));
+    removals.forEach((k) => url.searchParams.delete(k));
+    history.replaceState({}, "", url);
+  }
 
   // ------------------------------------------------------------------
   // 数据加载
@@ -37,6 +63,9 @@
   async function loadAll() {
     const id = $("surveySelect").value;
     state.surveyId = id;
+    state.detailRecord = null;
+    state.detailId = "";
+    $("responseDetail").hidden = true;
     setError("pageError", "");
     if (!id) {
       $("overviewBody").innerHTML = `<div class="empty" style="padding:30px"><p>请先选择一份问卷。</p></div>`;
@@ -56,14 +85,24 @@
       state.metadata = md.metadata;
       state.quality = qr.quality;
       state.responses = rp.responses || [];
+      state.responseTotal = rp.total || state.responses.length;
       state.batches = im.imports || [];
       renderStats();
       renderOverview();
       renderResponses();
       renderQuality();
       renderImports();
+      applyDeepLink();
     } catch (error) {
       setError("pageError", error.message);
+    }
+  }
+
+  function applyDeepLink() {
+    if (params.get("tab") === "responses") switchTab("responses");
+    if (state.deepResponseId) {
+      switchTab("responses");
+      openDetail(state.deepResponseId, false);
     }
   }
 
@@ -108,17 +147,137 @@
       ${table(["ID", "题干", "题型", "字段角色", "作答率", "统计"], questionRows)}`;
   }
 
+  // ------------------------------------------------------------------
+  // 答卷明细：筛选 + 逐题详情
+  // ------------------------------------------------------------------
+  function filteredResponses() {
+    const query = ($("responseSearch")?.value || "").trim().toLowerCase();
+    const validity = $("responseValidFilter")?.value || "";
+    return state.responses.filter((r) => {
+      if (state.sessionFilter && r.session_id !== state.sessionFilter) return false;
+      if (validity === "valid" && !r.valid) return false;
+      if (validity === "flagged" && r.valid) return false;
+      if (!query) return true;
+      return [r.rater, r.stimulus_id, r.response_id, r.session_id, r.batch_id, r.source]
+        .some((value) => String(value == null ? "" : value).toLowerCase().includes(query));
+    });
+  }
+
   function renderResponses() {
-    const rows = state.responses.map((r) => [
+    const rows = filteredResponses().map((r) => [
       fmt(r.submitted_at), fmt(r.rater), fmt(r.stimulus_id), fmt(r.source),
       fmt(r.batch_id || "—"), fmt(r.raw_row ?? "—"),
       r.valid ? badge("有效", "green") : badge("已标记", "amber"),
       fmt((r.flags || []).join("; ") || "—"),
+      `<button class="btn btn-soft btn-sm view-response" type="button" data-id="${esc(r.response_id)}">查看答卷</button>`,
     ]);
-    $("responseCount").textContent = `${state.responses.length} 条（最多显示 200）`;
+    const shown = rows.length;
+    $("responseCount").textContent = state.sessionFilter
+      ? `本轮 ${shown} 条`
+      : `显示 ${shown} / 共 ${state.responseTotal} 条（最多载入 200）`;
     $("responsesBody").innerHTML = table(
-      ["提交时间", "评分者", "素材", "来源", "批次", "原始行", "状态", "标记"], rows
+      ["提交时间", "评分者", "素材", "来源", "批次", "原始行", "状态", "标记", "操作"], rows
     );
+    if (state.sessionFilter) {
+      $("sessionFilterHint").textContent = `仅显示会话 ${state.sessionFilter} 提交的答卷`;
+      $("sessionFilterHint").hidden = false;
+      $("clearResponseFilter").hidden = false;
+    }
+  }
+
+  function answerRows(record, schema) {
+    const answers = record.answers || {};
+    const normalized = record.normalized || {};
+    const seen = new Set();
+    const rows = (schema || []).map((q, index) => {
+      seen.add(q.id);
+      return [
+        String(index + 1), esc(q.title || q.id),
+        esc(TYPE_LABELS[q.type] || q.type || "—"), esc(q.role || "自定义"),
+        `<span class="answer-raw">${esc(fmtValue(answers[q.id]))}</span>`,
+        `<span class="answer-norm">${esc(fmtValue(normalized[q.id]))}</span>`,
+      ];
+    });
+    Object.keys(answers).filter((key) => !seen.has(key)).forEach((key) => {
+      rows.push([
+        String(rows.length + 1), esc(key), "历史字段", "—",
+        `<span class="answer-raw">${esc(fmtValue(answers[key]))}</span>`,
+        `<span class="answer-norm">${esc(fmtValue(normalized[key]))}</span>`,
+      ]);
+    });
+    return rows;
+  }
+
+  function renderDetail(record, schema) {
+    const meta = [
+      ["答卷 ID", record.response_id], ["会话 ID", record.session_id || "—"],
+      ["评分者", record.rater || record.participant_code || "—"],
+      ["素材", record.stimulus_id || record.stimulus_raw || "—"],
+      ["提交时间", record.submitted_at],
+      ["答卷用时", record.duration_s == null ? "—" : `${record.duration_s} 秒`],
+      ["观看时长", `${record.watch_seconds ?? 0} 秒`],
+      ["来源", record.source], ["来源详情", record.source_detail],
+      ["IP 地区", record.ip_region || "—"], ["IP 哈希", record.ip_hash || "—"],
+      ["导入批次", record.batch_id || "—"], ["原始行号", record.raw_row ?? "—"],
+      ["量表版本", `v${record.schema_version ?? "—"}`], ["量表指纹", record.schema_hash],
+      ["答卷来源", record.origin], ["平台序号", record.serial_no ?? "—"],
+      ["平台总分", record.total_score ?? "—"],
+      ["质量标记", (record.flags || []).join("；") || "无"],
+    ];
+    const kv = `<div class="kv-grid">${meta.map(([k, v]) =>
+      `<div><span>${esc(k)}</span><strong>${esc(fmtValue(v))}</strong></div>`).join("")}</div>`;
+    const rows = answerRows(record, schema);
+    $("responseDetail").innerHTML = `
+      <div class="response-detail-head">
+        <div>
+          <h3>答卷详情 · ${esc(record.rater || record.participant_code || "匿名")} × ${esc(record.stimulus_id || "—")}</h3>
+          <p>${esc(record.response_id)} · ${esc(record.submitted_at || "")} · 量表 v${esc(record.schema_version ?? "—")}</p>
+        </div>
+        <div class="detail-actions">
+          ${record.valid ? badge("有效", "green") : badge("已标记", "amber")}
+          <button class="btn btn-soft btn-sm" type="button" id="downloadResponse">下载 JSON</button>
+          <button class="btn btn-soft btn-sm" type="button" id="closeResponseDetail">关闭</button>
+        </div>
+      </div>
+      <div class="response-detail-body">
+        <h3 class="section-title">答卷元数据</h3>${kv}
+        <h3 class="section-title">逐题作答（${rows.length} 题）</h3>
+        <div class="table-scroll">${table(["#", "题干", "题型", "字段角色", "原始作答", "归一化值"], rows)}</div>
+        <p class="hint" style="padding:10px 0 0">归一化值由字段角色自动生成，供质量评分与分析宽表使用；原始作答保留被试填写或问卷星导出的原样。</p>
+      </div>`;
+  }
+
+  async function openDetail(id, scroll = true) {
+    if (!state.surveyId || !id) return;
+    const box = $("responseDetail");
+    box.hidden = false;
+    box.innerHTML = `<div class="empty" style="padding:22px"><p>正在读取答卷…</p></div>`;
+    state.detailId = id;
+    try {
+      const data = await EEG.api(
+        `/api/surveys/${encodeURIComponent(state.surveyId)}/responses/${encodeURIComponent(id)}`
+      );
+      state.detailRecord = data.response;
+      renderDetail(data.response, data.schema);
+      setUrl({ tab: "responses", response_id: id });
+      if (scroll) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (error) {
+      box.innerHTML = `<div class="form-error" style="margin:16px">${esc(error.message)}</div>`;
+    }
+  }
+
+  function clearFilters() {
+    $("responseSearch").value = "";
+    $("responseValidFilter").value = "";
+    state.sessionFilter = "";
+    state.deepResponseId = "";
+    state.detailId = "";
+    state.detailRecord = null;
+    $("sessionFilterHint").hidden = true;
+    $("clearResponseFilter").hidden = true;
+    $("responseDetail").hidden = true;
+    setUrl({ tab: "responses" }, ["response_id", "session_id"]);
+    renderResponses();
   }
 
   function renderQuality() {
@@ -162,12 +321,38 @@
   // ------------------------------------------------------------------
   document.querySelectorAll("#dataTabs .tab").forEach((button) => {
     button.addEventListener("click", () => {
-      const key = button.dataset.tab;
-      document.querySelectorAll("#dataTabs .tab").forEach((b) => b.classList.toggle("active", b === button));
-      TABS.forEach((name) => { $("tab-" + name).hidden = name !== key; });
+      switchTab(button.dataset.tab);
+      setUrl({ tab: button.dataset.tab });
     });
   });
   $("surveySelect").addEventListener("change", loadAll);
+  $("responseSearch")?.addEventListener("input", renderResponses);
+  $("responseValidFilter")?.addEventListener("change", renderResponses);
+  $("clearResponseFilter")?.addEventListener("click", clearFilters);
+
+  $("responsesBody")?.addEventListener("click", (event) => {
+    const button = event.target.closest(".view-response");
+    if (button) openDetail(button.dataset.id);
+  });
+
+  $("responseDetail")?.addEventListener("click", (event) => {
+    if (event.target.closest("#closeResponseDetail")) {
+      $("responseDetail").hidden = true;
+      state.detailId = "";
+      state.deepResponseId = "";
+      setUrl({ tab: "responses" }, ["response_id"]);
+    }
+    if (event.target.closest("#downloadResponse") && state.detailRecord) {
+      const blob = new Blob([JSON.stringify(state.detailRecord, null, 2)], { type: "application/json" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${state.detailRecord.response_id || "response"}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+    }
+  });
 
   async function rawPost(url, body) {
     const response = await fetch(url, {
@@ -241,5 +426,6 @@
   });
 
   renderImports();
+  if (params.get("tab") === "responses") switchTab("responses");
   if ($("surveySelect").value) loadAll();
 })();

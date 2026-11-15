@@ -49,19 +49,22 @@
   }
 
   function resetForm() {
-    responseForm.reset();
+    // 旧版固定量表控件只在旧问卷（无 schema）上初始化
+    if (!useSchema && responseForm) {
+      responseForm.reset();
+      $("publicValence").value = "5";
+      $("publicArousal").value = "5";
+      $("publicIntensity").value = "3";
+      $("publicFamiliarity").value = "3";
+      syncScale("publicValence", "publicValenceValue", "publicValence");
+      syncScale("publicArousal", "publicArousalValue", "publicArousal");
+    }
     if (schemaForm) {
       schemaForm.reset();
       schemaForm.querySelectorAll("input[data-rating]").forEach((input) => {
         input.dispatchEvent(new Event("input", { bubbles: true }));
       });
     }
-    $("publicValence").value = "5";
-    $("publicArousal").value = "5";
-    $("publicIntensity").value = "3";
-    $("publicFamiliarity").value = "3";
-    syncScale("publicValence", "publicValenceValue", "publicValence");
-    syncScale("publicArousal", "publicArousalValue", "publicArousal");
     question.hidden = true;
     state.watchStartedAt = null;
     state.watchSeconds = 0;
@@ -146,46 +149,50 @@
     question.scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
 
-  $("publicValence")?.addEventListener("input", () => syncScale("publicValence", "publicValenceValue", "publicValence"));
-  $("publicArousal")?.addEventListener("input", () => syncScale("publicArousal", "publicArousalValue", "publicArousal"));
-  document.querySelectorAll('.rating-scale[data-scale="publicValence"] button').forEach((button) => button.addEventListener("click", () => {
-    $("publicValence").value = button.dataset.value;
-    $("publicValence").dispatchEvent(new Event("input", { bubbles: true }));
-  }));
-  document.querySelectorAll('.rating-scale[data-scale="publicArousal"] button').forEach((button) => button.addEventListener("click", () => {
-    $("publicArousal").value = button.dataset.value;
-    $("publicArousal").dispatchEvent(new Event("input", { bubbles: true }));
-  }));
+  // 旧版固定量表的绑定与提交通道，只在无 schema 的旧问卷上注册；
+  // 新版问卷若残留这些监听，任何脚本触发 submit 都会把 5 个硬编码字段写进旧会话。
+  if (!useSchema) {
+    $("publicValence")?.addEventListener("input", () => syncScale("publicValence", "publicValenceValue", "publicValence"));
+    $("publicArousal")?.addEventListener("input", () => syncScale("publicArousal", "publicArousalValue", "publicArousal"));
+    document.querySelectorAll('.rating-scale[data-scale="publicValence"] button').forEach((button) => button.addEventListener("click", () => {
+      $("publicValence").value = button.dataset.value;
+      $("publicValence").dispatchEvent(new Event("input", { bubbles: true }));
+    }));
+    document.querySelectorAll('.rating-scale[data-scale="publicArousal"] button').forEach((button) => button.addEventListener("click", () => {
+      $("publicArousal").value = button.dataset.value;
+      $("publicArousal").dispatchEvent(new Event("input", { bubbles: true }));
+    }));
 
-  responseForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!state.session) return;
-    setError("publicResponseError", "");
-    const button = $("publicSubmit");
-    button.disabled = true;
-    const form = new FormData(responseForm);
-    try {
-      const payload = await api(`/api/public/surveys/${encodeURIComponent(token)}/sessions/${encodeURIComponent(state.session.id)}/responses`, {
-        method: "POST",
-        body: JSON.stringify({
-          valence: Number(form.get("valence")),
-          arousal: Number(form.get("arousal")),
-          discrete: String(form.get("discrete") || ""),
-          intensity: Number(form.get("intensity")),
-          familiarity: Number(form.get("familiarity")),
-          previous_viewed: $("publicPrevious").checked,
-          watch_seconds: state.watchSeconds,
-          note: "",
-        }),
-      });
-      renderSession(payload.session);
-      EEG.toast("问卷已保存", "success");
-    } catch (error) {
-      setError("publicResponseError", error.message);
-    } finally {
-      button.disabled = false;
-    }
-  });
+    responseForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!state.session) return;
+      setError("publicResponseError", "");
+      const button = $("publicSubmit");
+      button.disabled = true;
+      const form = new FormData(responseForm);
+      try {
+        const payload = await api(`/api/public/surveys/${encodeURIComponent(token)}/sessions/${encodeURIComponent(state.session.id)}/responses`, {
+          method: "POST",
+          body: JSON.stringify({
+            valence: Number(form.get("valence")),
+            arousal: Number(form.get("arousal")),
+            discrete: String(form.get("discrete") || ""),
+            intensity: Number(form.get("intensity")),
+            familiarity: Number(form.get("familiarity")),
+            previous_viewed: $("publicPrevious").checked,
+            watch_seconds: state.watchSeconds,
+            note: "",
+          }),
+        });
+        renderSession(payload.session);
+        EEG.toast("问卷已保存", "success");
+      } catch (error) {
+        setError("publicResponseError", error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
 
   // ------------------------------------------------------------------
   // 自定义量表：按 schema 动态渲染（旧版问卷走上面的固定表单）
@@ -285,4 +292,53 @@
       }
     });
   }
+
+  // ------------------------------------------------------------------
+  // 完成页：回看本轮逐题作答（仅本会话，绝不跨会话读取）
+  // ------------------------------------------------------------------
+  function reviewValue(value) {
+    if (value == null || value === "") return "—";
+    if (Array.isArray(value)) return value.length ? value.join("、") : "—";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+
+  function renderReview(data) {
+    const box = $("publicReviewBox");
+    const schema = data.schema || [];
+    const records = data.responses || [];
+    if (!records.length) {
+      box.innerHTML = `<div class="empty" style="padding:18px"><p>本轮没有可回看的逐题答卷；旧版固定量表记录可在后台导出。</p></div>`;
+      return;
+    }
+    box.innerHTML = `<h4>本轮共 ${records.length} 份答卷 · ${escHtml((data.survey || {}).title || "")}</h4>` +
+      records.map((record, index) => {
+        const rows = schema.map((q) =>
+          `<tr><td>${escHtml(q.title || q.id)}</td><td><strong>${escHtml(reviewValue((record.answers || {})[q.id]))}</strong></td></tr>`
+        ).join("");
+        return `<div class="review-card">
+          <div class="review-head"><strong>第 ${index + 1} 份 · ${escHtml(record.stimulus_id || "素材")}</strong><span class="mono">${escHtml(record.submitted_at || "")}</span></div>
+          <table class="data"><thead><tr><th>题目</th><th>你的作答</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>`;
+      }).join("");
+  }
+
+  $("publicReviewBtn")?.addEventListener("click", async () => {
+    if (!state.session) return;
+    const box = $("publicReviewBox");
+    const button = $("publicReviewBtn");
+    box.hidden = false;
+    box.innerHTML = `<p class="hint">正在读取本轮作答…</p>`;
+    button.disabled = true;
+    try {
+      const data = await api(
+        `/api/public/surveys/${encodeURIComponent(token)}/sessions/${encodeURIComponent(state.session.id)}/result`
+      );
+      renderReview(data);
+    } catch (error) {
+      box.innerHTML = `<div class="form-error">${escHtml(error.message)}</div>`;
+    } finally {
+      button.disabled = false;
+    }
+  });
 })();

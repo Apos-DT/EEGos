@@ -11,10 +11,21 @@ class WebTests(unittest.TestCase):
         cls.client = TestClient(app)
 
     def test_pages_render(self):
-        for path in ["/", "/experiment", "/surveys", "/surveys/new", "/media", "/responses", "/eeg", "/audit", "/selection", "/datasets", "/training", "/experiments", "/documents", "/system"]:
+        for path in ["/", "/surveys", "/survey-data", "/surveys/new", "/media", "/eeg", "/audit", "/selection", "/datasets", "/training", "/experiments", "/documents", "/system"]:
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("EEG-EmoStudio", response.text)
+
+    def test_legacy_experiment_pages_redirect(self):
+        """旧版现场实验与统计页已下线，统一收敛到问卷数据页。"""
+
+        for path in ["/experiment", "/responses"]:
+            response = self.client.get(path, follow_redirects=False)
+            self.assertEqual(response.status_code, 302, path)
+            self.assertEqual(response.headers["location"], "/survey-data")
+        home = self.client.get("/").text
+        self.assertNotIn("现场实验（旧版）", home)
+        self.assertIn("/survey-data", home)
 
     def test_core_apis(self):
         for path in ["/api/health", "/api/overview", "/api/audit", "/api/selection", "/api/datasets", "/api/experiments", "/api/docs", "/api/experiment/sessions", "/api/experiment/responses", "/api/media", "/api/surveys", "/api/eeg/uploads"]:

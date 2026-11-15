@@ -64,7 +64,8 @@
         <div class="endpoint"><span class="method post">POST</span><code>/api/selection/run</code><small>启动选材任务</small></div>
         <div class="endpoint"><span class="method post">POST</span><code>/api/raw/upload</code><small>上传 raw.npz</small></div>
         <div class="endpoint"><span class="method post">POST</span><code>/api/features/run</code><small>提取 DE 特征</small></div>
-        <div class="endpoint"><span class="method post">POST</span><code>/api/experiment/sessions</code><small>创建实验会话</small></div>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/surveys/{id}/responses/{rid}</code><small>单份答卷详情</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/public/surveys/{token}/sessions/{id}/answers</code><small>提交逐题答卷</small></div>
         <div class="endpoint"><span class="method post">POST</span><code>/api/eeg/process</code><small>清洗 EEGLAB 数据</small></div>
         <div class="endpoint"><span class="method post">POST</span><code>/api/datasets/merge</code><small>合并多被试特征集</small></div>
         <div class="endpoint"><span class="method post">POST</span><code>/api/train/run</code><small>启动 LOSO 训练</small></div>

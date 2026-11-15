@@ -19,7 +19,7 @@
     </div>
     <div class="hero-meta">
       <span>{{ icon('lock', 13) }} 数据不出本机</span>
-      <span>{{ icon('check', 13) }} 28 项测试通过</span>
+      <span>{{ icon('check', 13) }} 36 项测试通过</span>
       <span>{{ icon('layers', 13) }} LOSO 防泄漏</span>
     </div>
   </div>
@@ -84,28 +84,35 @@
   <div class="stack">
     <section class="panel">
       <div class="panel-head">
-        <div><h2 class="panel-title">最近实验会话</h2><p class="panel-sub">被试、进度、状态；点击继续未完成的一轮</p></div>
-        <a class="panel-link" href="/responses">全部问卷 {{ icon('arrow', 13) }}</a>
+        <div><h2 class="panel-title">最近问卷会话</h2><p class="panel-sub">被试、进度与状态；点击可查看该轮逐题答卷</p></div>
+        <a class="panel-link" href="/survey-data">全部问卷数据 {{ icon('arrow', 13) }}</a>
       </div>
       {% if data.experiment.latest_sessions %}
       <div class="table-wrap">
         <table class="data">
-          <thead><tr><th>被试</th><th>会话</th><th>进度</th><th>状态</th><th>时间</th></tr></thead>
+          <thead><tr><th>被试</th><th>问卷 / 会话</th><th>进度</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
           <tbody>
           {% for session in data.experiment.latest_sessions[:6] %}
             <tr>
               <td class="strong">{{ session.participant_code }}</td>
-              <td class="mono">{{ session.id }}</td>
+              <td class="mono">{% if session.survey_title %}<div class="muted">{{ session.survey_title }}</div>{% endif %}{{ session.id }}</td>
               <td>{{ session.answered }} / {{ session.total }}</td>
               <td><span class="badge {% if session.status == 'completed' %}badge-green{% elif session.status == 'running' %}badge-amber{% else %}badge-gray{% endif %}">{{ '已完成' if session.status == 'completed' else ('进行中' if session.status == 'running' else '已结束') }}</span></td>
               <td class="muted">{{ session.created_at[:16].replace('T', ' ') }}</td>
+              <td>
+                {% if session.survey_id %}
+                <a class="panel-link" href="/survey-data?survey_id={{ session.survey_id }}&session_id={{ session.id }}&tab=responses">查看答卷 {{ icon('arrow', 12) }}</a>
+                {% else %}
+                <span class="muted">旧版会话</span>
+                {% endif %}
+              </td>
             </tr>
           {% endfor %}
           </tbody>
         </table>
       </div>
       {% else %}
-      <div class="empty" style="padding:22px"><div class="empty-icon">{{ icon('play', 22) }}</div><p>还没有实验会话。开始第一轮视频 + 问卷。</p><a class="btn btn-primary btn-sm" href="/surveys/new">开始实验</a></div>
+      <div class="empty" style="padding:22px"><div class="empty-icon">{{ icon('play', 22) }}</div><p>还没有问卷会话。新建一份问卷并分享链接给被试。</p><a class="btn btn-primary btn-sm" href="/surveys/new">新建问卷</a></div>
       {% endif %}
     </section>
 

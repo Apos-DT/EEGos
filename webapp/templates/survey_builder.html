@@ -100,6 +100,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>window.__QUESTIONNAIRE__ = {{ (questionnaire|default({}, true))|tojson }}; window.__SURVEY_SCHEMA__ = {{ (survey_schema|default([], true))|tojson }}; window.__SURVEY_KIND__ = {{ (survey.get('kind', 'video') if survey else 'video')|tojson }};</script>
+<script>window.__QUESTIONNAIRE__ = {{ (questionnaire|default({}, true))|tojson }}; window.__SURVEY_SCHEMA__ = {{ (survey_schema|default([], true))|tojson }}; window.__SURVEY_KIND__ = {{ (survey_kind|default('video', true))|tojson }};</script>
 <script src="{{ url_for('static', path='js/survey_builder.js') }}"></script>
 {% endblock %}

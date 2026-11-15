@@ -4,7 +4,6 @@
 
 {% block actions %}
 <a class="btn btn-soft" href="/survey-data">{{ icon('layers', 15) }} 问卷数据与元数据</a>
-<a class="btn btn-soft" href="/survey-data">{{ icon('layers', 15) }} 数据与元数据</a>
 <a class="btn btn-soft" href="/media">{{ icon('sliders', 15) }} 素材库</a>
 <a class="btn btn-primary" href="/surveys/new">{{ icon('play', 15) }} 新建问卷</a>
 {% endblock %}
@@ -62,16 +61,21 @@
           <span class="mono">{{ survey.created_at[:16].replace('T', ' ') }}</span>
         </div>
         <div class="share-line">
+          {% if survey.status == 'archived' %}
+          <span class="badge badge-gray">历史导入归档 · 不对外发布</span>
+          {% else %}
           <code>{{ survey.public_path }}</code>
           <button class="btn btn-soft btn-sm copy-link" type="button" data-path="{{ survey.public_path }}" data-base="{{ share_base }}">{{ icon('file', 12) }} 复制链接</button>
           <a class="btn btn-soft btn-sm" href="{{ survey.public_path }}" target="_blank" rel="noreferrer">打开 {{ icon('external', 12) }}</a>
+          {% endif %}
         </div>
       </div>
       <div class="survey-actions">
         <a class="btn btn-soft btn-sm" href="/surveys/{{ survey.id }}/edit">{{ icon('settings', 12) }} 编辑</a>
+        {% if survey.status != 'archived' %}
         <button class="btn btn-soft btn-sm toggle-survey" type="button" data-id="{{ survey.id }}">{{ '关闭' if survey.status == 'open' else '重新开放' }}</button>
-        <a class="btn btn-soft btn-sm" href="/survey-data?survey_id={{ survey.id }}">{{ icon('layers', 12) }} 数据与元数据</a>
-        <a class="btn btn-soft btn-sm" href="/responses">{{ icon('chart', 12) }} 查看响应</a>
+        {% endif %}
+        <a class="btn btn-soft btn-sm" href="/survey-data?survey_id={{ survey.id }}&tab=responses">{{ icon('chart', 12) }} 查看答卷</a>
       </div>
     </article>
     {% endfor %}

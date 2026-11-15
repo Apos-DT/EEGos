@@ -112,7 +112,15 @@
       </form>
       <form id="schemaResponseForm" hidden></form>
     </div>
-    <div class="completion-card" id="publicComplete" hidden><div class="completion-icon">{{ icon('check', 30) }}</div><h3>问卷完成</h3><p>感谢参与，你的回答已保存。</p></div>
+    <div class="completion-card" id="publicComplete" hidden>
+      <div class="completion-icon">{{ icon('check', 30) }}</div>
+      <h3>问卷完成</h3>
+      <p>感谢参与，你的回答已保存。可以回看本轮每个素材的逐题作答。</p>
+      <div class="completion-actions">
+        <button class="btn btn-primary" type="button" id="publicReviewBtn">查看本轮作答 {{ icon('arrow', 14) }}</button>
+      </div>
+      <div id="publicReviewBox" class="public-review" hidden></div>
+    </div>
   </section>
 
   <footer class="public-footer">EEG-EmoStudio · 数据仅用于本研究 · 本地保存</footer>

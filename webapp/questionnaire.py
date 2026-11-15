@@ -504,3 +504,32 @@ def wjx_header(question: dict[str, Any], index: int) -> str:
     """生成问卷星风格表头；导入过的题优先沿用原始表头。"""
 
     return question.get("source_column") or f"{index}、{question['title']}"
+
+
+def survey_kind(survey: dict[str, Any]) -> str:
+    """统一推断问卷量表模态：显式 kind 优先，否则按素材模态推断。
+
+    kind 是刺激编号归一化（.mp4 / .mp3）与默认量表版本的输入，不是纯展示字段；
+    读写两侧必须用同一口径，否则编辑后会出现「表头是音乐版、编号却是视频版」的静默错误。
+    """
+
+    explicit = survey.get("kind")
+    if explicit in {"video", "audio"}:
+        return explicit
+    materials = survey.get("materials") or []
+    if materials and all(item.get("modality") == "audio" for item in materials):
+        return "audio"
+    return "video"
+
+
+def schema_for_survey(survey: dict[str, Any]) -> list[dict[str, Any]]:
+    """读取问卷题目定义；旧版无 schema 的问卷统一回退到默认量表。
+
+    surveys（读侧）与 survey_meta（写/统计/导出侧）共用本函数，避免旧问卷
+    在部分端点拿到空 schema 而返回 400。
+    """
+
+    raw = survey.get("schema")
+    if raw:
+        return normalize_schema(raw)
+    return default_schema(survey_kind(survey))

@@ -9,6 +9,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -22,9 +23,7 @@ from . import __version__
 from .content import APP_NAME, APP_SUBTITLE, APP_VERSION, DOCS, MODELS, NAV, NAV_GROUPS, PAGE_META
 from .eeg import list_uploads, output_for, report_for, resolve_upload, save_upload
 from .experiment import (
-    DISCRETE_CHOICES,
     abort_session,
-    LIKERT_LABELS,
     create_session,
     list_sessions,
     load_session,
@@ -42,6 +41,7 @@ from .questionnaire import SchemaError, schema_fingerprint
 from .surveys import (
     create_survey,
     get_schema,
+    infer_kind,
     list_surveys,
     load_survey,
     public_media,
@@ -52,6 +52,7 @@ from .surveys import (
     survey_by_token,
     toggle_survey,
     update_survey,
+    validate_public_session,
 )
 from .services import (
     ARTIFACTS,
@@ -159,25 +160,38 @@ async def dashboard(request: Request) -> HTMLResponse:
     return _render(request, "dashboard", "dashboard.html", data=data)
 
 
-@app.get("/experiment", response_class=HTMLResponse)
-async def experiment_page(request: Request) -> HTMLResponse:
-    data = await run_in_threadpool(experiment_summary)
-    sessions = await run_in_threadpool(list_sessions)
-    return _render(
-        request,
-        "experiment",
-        "experiment.html",
-        data=data,
-        sessions=sessions,
-        discrete_choices=DISCRETE_CHOICES,
-        likert_labels=LIKERT_LABELS,
-    )
+@app.get("/experiment")
+async def experiment_page(request: Request) -> Response:
+    """旧版现场采集页已下线，统一收敛到问卷数据页。
+
+    新版公开问卷的会话与旧版共用 ``data/experiment/sessions`` 目录，旧页面
+    会把这些会话误当成「现场实验」并渲染固定量表。带 session 参数访问时
+    直接定位到该轮答卷详情；旧版会话（无 survey_id）则回到总览。
+    """
+
+    session_id = request.query_params.get("session", "").strip()
+    if session_id:
+        try:
+            session = await run_in_threadpool(load_session, session_id)
+        except (FileNotFoundError, ValueError):
+            session = None
+        if session and session.get("survey_id"):
+            survey_id = str(session["survey_id"])
+            records = await run_in_threadpool(
+                survey_meta.responses_for_session, survey_id, session_id
+            )
+            params = {"survey_id": survey_id, "session_id": session_id, "tab": "responses"}
+            if records:
+                params["response_id"] = str(records[-1]["response_id"])
+            return RedirectResponse(f"/survey-data?{urlencode(params)}", status_code=302)
+    return RedirectResponse("/survey-data", status_code=302)
 
 
-@app.get("/responses", response_class=HTMLResponse)
-async def responses_page(request: Request) -> HTMLResponse:
-    data = await run_in_threadpool(responses_payload)
-    return _render(request, "responses", "responses.html", data=data)
+@app.get("/responses")
+async def responses_page() -> Response:
+    """旧版「实验问卷」统计页已下线；逐题答卷统一在问卷数据页查看。"""
+
+    return RedirectResponse("/survey-data", status_code=302)
 
 
 def _media_response(path: Path, request: Request, media_type: str = "video/mp4") -> Response:
@@ -326,6 +340,7 @@ async def survey_new_page(request: Request) -> HTMLResponse:
         request, "survey_builder", "survey_builder.html",
         data=data, survey=None, questionnaire=questionnaire_templates,
         survey_schema=questionnaire_templates["templates"]["video"],
+        survey_kind="video",
     )
 
 
@@ -339,7 +354,7 @@ async def survey_edit_page(request: Request, survey_id: str) -> HTMLResponse:
     return _render(
         request, "survey_builder", "survey_builder.html",
         data=data, survey=survey, questionnaire=question_templates(),
-        survey_schema=get_schema(survey),
+        survey_schema=get_schema(survey), survey_kind=infer_kind(survey),
     )
 
 
@@ -349,6 +364,9 @@ async def public_survey_page(request: Request, token: str) -> HTMLResponse:
         survey = await run_in_threadpool(survey_by_token, token)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # 历史导入问卷是归档证据，不对外发布：链接直接收回
+    if survey.get("status") == "archived":
+        raise HTTPException(status_code=404, detail="问卷链接不存在")
     return templates.TemplateResponse(
         request=request,
         name="public_survey.html",
@@ -563,6 +581,8 @@ class SurveyUpdateRequest(BaseModel):
     target_n: int | None = Field(None, ge=0, le=100000)
     require_code: bool | None = None
     allow_multiple: bool | None = None
+    # 切换视频/音乐标准量表时必须同步落盘，否则刺激编号会按旧模态归一化
+    kind: str = Field("", max_length=16)
 
 
 class SchemaAnswersRequest(BaseModel):
@@ -819,6 +839,7 @@ async def api_survey_update(survey_id: str, payload: SurveyUpdateRequest) -> dic
             payload.target_n,
             payload.require_code,
             payload.allow_multiple,
+            payload.kind,
         )
     except (ValueError, SchemaError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -869,7 +890,7 @@ async def api_survey_schema(survey_id: str) -> dict[str, Any]:
         "schema_version": int(survey.get("schema_version", 1) or 1),
         "schema_hash": survey.get("schema_hash") or schema_fingerprint(schema),
         "schema_history": survey.get("schema_history", []),
-        "kind": survey.get("kind", "video"),
+        "kind": infer_kind(survey),
     }
 
 
@@ -916,6 +937,17 @@ async def api_survey_responses_clean_csv(survey_id: str) -> Response:
     await _get_survey(survey_id)
     content = await run_in_threadpool(survey_meta.export_clean_csv, survey_id)
     return _csv_response(content, f"clean_{_safe_name(survey_id)}.csv")
+
+
+@app.get("/api/surveys/{survey_id}/responses/{response_id}")
+async def api_survey_response_detail(survey_id: str, response_id: str) -> dict[str, Any]:
+    """单份答卷详情：完整记录 + 题目定义，支持从会话链接直达。"""
+
+    await _get_survey(survey_id)
+    try:
+        return await run_in_threadpool(survey_meta.response_detail, survey_id, response_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/surveys/import/preview")
@@ -970,13 +1002,15 @@ async def api_public_survey(token: str) -> dict[str, Any]:
         survey = await run_in_threadpool(survey_by_token, token)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if survey.get("status") == "archived":
+        raise HTTPException(status_code=404, detail="问卷链接不存在")
     return {
         "id": survey["id"],
         "title": survey["title"],
         "description": survey.get("description", ""),
         "status": survey.get("status", "open"),
         "n_materials": len(survey.get("materials", [])),
-        "kind": survey.get("kind", "video"),
+        "kind": infer_kind(survey),
         "schema_version": int(survey.get("schema_version", 1) or 1),
         # 旧版问卷返回空 schema，公开页会回退到固定量表表单
         "schema": survey.get("schema") or [],
@@ -1032,6 +1066,32 @@ async def api_public_schema_submit(
         )
     except (SchemaError, ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/public/surveys/{token}/sessions/{session_id}/result")
+async def api_public_session_result(token: str, session_id: str) -> dict[str, Any]:
+    """被试完成一轮后回看本轮逐题作答。
+
+    仅返回该会话自己提交的答卷，并按 session 所属问卷校验，避免跨会话
+    读取他人答案；归档问卷不提供公开访问。
+    """
+
+    try:
+        survey = await run_in_threadpool(survey_by_token, token)
+        if survey.get("status") == "archived":
+            raise ValueError("问卷链接不存在")
+        await run_in_threadpool(validate_public_session, token, session_id)
+        records = await run_in_threadpool(
+            survey_meta.responses_for_session, survey["id"], session_id
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "session_id": session_id,
+        "survey": {"id": survey["id"], "title": survey.get("title", "")},
+        "schema": get_schema(survey),
+        "responses": records,
+    }
 
 
 @app.post("/api/audit/run")

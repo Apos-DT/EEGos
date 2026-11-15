@@ -36,6 +36,8 @@ from .questionnaire import (
     normalize_schema,
     parse_platform_meta,
     schema_fingerprint,
+    schema_for_survey,
+    survey_kind,
     validate_answers,
     wjx_header,
 )
@@ -91,10 +93,10 @@ def build_response_record(
 ) -> dict[str, Any]:
     """构造一份统一答卷记录（不落盘）。"""
 
-    schema = normalize_schema(survey.get("schema") or [])
+    schema = schema_for_survey(survey)
     if not schema:
         raise SchemaError("该问卷没有题目定义")
-    kind = survey.get("kind", "video")
+    kind = survey_kind(survey)
     clean, normalized, flags = validate_answers(schema, answers, kind=kind, strict=strict)
 
     by_role = {question["role"]: (question, normalized.get(question["id"])) for question in schema if question.get("role")}
@@ -179,6 +181,61 @@ def response_table(survey_id: str, limit: int = 200) -> dict[str, Any]:
     return {"total": len(rows), "responses": rows[: max(1, min(limit, 5000))]}
 
 
+def total_responses() -> int:
+    """统一答卷仓库里的答卷总数，供工作台统计使用。"""
+
+    if not RESPONSES_DIR.exists():
+        return 0
+    total = 0
+    for path in RESPONSES_DIR.glob("*.jsonl"):
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                total += sum(1 for line in handle if line.strip())
+        except OSError:
+            continue
+    return total
+
+
+def get_response(survey_id: str, response_id: str) -> dict[str, Any] | None:
+    """按 response_id 定位单份答卷，供详情页深链使用。"""
+
+    for record in iter_responses(survey_id):
+        if record.get("response_id") == response_id:
+            return record
+    return None
+
+
+def responses_for_session(survey_id: str, session_id: str) -> list[dict[str, Any]]:
+    """某轮公开问卷会话提交的全部答卷，按提交时间排序。"""
+
+    return sorted(
+        (record for record in iter_responses(survey_id) if record.get("session_id") == session_id),
+        key=lambda item: item.get("submitted_at", ""),
+    )
+
+
+def response_detail(survey_id: str, response_id: str) -> dict[str, Any]:
+    """单份答卷 + 题目定义，供后台「查看答卷」逐题展开。
+
+    题目定义随答卷一起返回，页面才能显示题干、题型与字段角色；答卷本身
+    已带 schema_version / schema_hash，改过量表后仍可对照当时的版本。
+    """
+
+    record = get_response(survey_id, response_id)
+    if record is None:
+        raise FileNotFoundError("答卷不存在")
+    survey = load_survey(survey_id)
+    return {
+        "response": record,
+        "schema": schema_for_survey(survey),
+        "survey": {
+            "id": survey["id"],
+            "title": survey.get("title", ""),
+            "kind": survey_kind(survey),
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # 元数据统计与质量诊断
 # ---------------------------------------------------------------------------
@@ -194,14 +251,14 @@ def _numeric(records: list[dict[str, Any]], role: str) -> list[float]:
 
 
 def _role_key(survey: dict[str, Any], role: str) -> str | None:
-    return next((q["id"] for q in normalize_schema(survey.get("schema")) if q.get("role") == role), None)
+    return next((q["id"] for q in schema_for_survey(survey) if q.get("role") == role), None)
 
 
 def survey_metadata(survey_id: str) -> dict[str, Any]:
     """问卷层 + 答卷层 + 题目层元数据汇总。"""
 
     survey = load_survey(survey_id)
-    schema = normalize_schema(survey.get("schema"))
+    schema = schema_for_survey(survey)
     records = iter_responses(survey_id)
     valid = [record for record in records if record.get("valid")]
     raters = {record.get("rater") for record in valid if record.get("rater")}
@@ -245,7 +302,7 @@ def survey_metadata(survey_id: str) -> dict[str, Any]:
         "schema_version": int(survey.get("schema_version", 1) or 1),
         "schema_hash": survey.get("schema_hash") or (schema_fingerprint(schema) if schema else ""),
         "schema_history": survey.get("schema_history", []),
-        "kind": survey.get("kind", "video"),
+        "kind": survey_kind(survey),
         "origin": survey.get("origin", {}),
         "n_questions": len(schema),
         "questions": questions,
@@ -380,7 +437,7 @@ def export_wjx_csv(survey_id: str) -> str:
     """
 
     survey = load_survey(survey_id)
-    schema = normalize_schema(survey.get("schema"))
+    schema = schema_for_survey(survey)
     if not schema:
         raise SchemaError("该问卷没有题目定义，无法导出")
     records = sorted(iter_responses(survey_id), key=lambda item: item.get("serial_no") or 0)
@@ -408,7 +465,7 @@ def export_clean_csv(survey_id: str) -> str:
     """导出分析用宽表：元数据列 + 每个 role 一列归一化值。"""
 
     survey = load_survey(survey_id)
-    schema = normalize_schema(survey.get("schema"))
+    schema = schema_for_survey(survey)
     roles = [question["role"] for question in schema if question.get("role")]
     fields = [
         "response_id", "survey_id", "schema_version", "origin", "batch_id", "raw_row",

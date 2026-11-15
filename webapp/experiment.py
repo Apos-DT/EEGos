@@ -1,9 +1,14 @@
-"""Local experiment runner: video playback + questionnaire capture.
+"""实验会话存储与旧版固定量表数据兼容层。
 
-Sessions are deliberately stored as plain JSON files under
-``data/experiment/sessions`` so that a pilot can be inspected, backed up and
-archived without a database.  Videos are never copied; the session stores a
-stimulus id and the playback route resolves it against the curated list.
+旧版「现场实验」前端（experiment.html / responses.html）已下线，公开问卷统一
+从 ``/q/{token}`` 进入，逐题答卷在 ``webapp/survey_meta.py`` 的 JSONL 仓库中。
+本模块仍承担两件事：
+
+* 会话 JSON 的读写与播放游标（新版问卷会话同样落在
+  ``data/experiment/sessions``，因此两个通道共用 SESSIONS_DIR）；
+* 旧版固定量表答卷的读取、统计与 CSV 导出，保证历史会话可回溯。
+
+会话以纯 JSON 保存，便于检查、备份与归档；素材不复制、不上传。
 """
 
 from __future__ import annotations
@@ -198,6 +203,18 @@ def public_session(session: dict[str, Any]) -> dict[str, Any]:
     sequence = session.get("sequence", [])
     index = int(session.get("current_index", 0))
     current = sequence[index] if index < len(sequence) and session.get("status") == "running" else None
+    # 新版自定义量表答卷落在统一 JSONL 仓库，不写进 session.responses；
+    # 进度必须按 session_id 回查，否则提交后进度条一直停在 0/N。
+    answered = len(session.get("responses", []))
+    if session.get("survey_id"):
+        try:
+            from . import survey_meta  # 延迟导入，避免 survey_meta -> surveys -> experiment 循环
+
+            answered = len(
+                survey_meta.responses_for_session(str(session["survey_id"]), session["id"])
+            )
+        except Exception:
+            pass
     payload = {
         "id": session["id"],
         "participant_code": session["participant_code"],
@@ -206,23 +223,32 @@ def public_session(session: dict[str, Any]) -> dict[str, Any]:
         "updated_at": session["updated_at"],
         "current_index": index,
         "total": len(sequence),
-        "answered": len(session.get("responses", [])),
+        "answered": answered,
         "current": None,
         "progress": round(100 * index / len(sequence), 1) if sequence else 0,
+        # 新版问卷会话携带归属问卷，前端据此直达该轮答卷；旧版会话留空。
+        "survey_id": session.get("survey_id", ""),
+        "survey_title": session.get("survey_title", ""),
     }
     if current:
         media_type = "audio" if str(current.get("modality", "video")) == "audio" else "video"
+        token = session.get("survey_token")
+        media_url = (
+            f"/q/{token}/media/{session['id']}?v={index}"
+            if token
+            else f"/experiment/media/{session['id']}?v={index}"
+        )
         payload["current"] = {
             "stimulus_id": current["stimulus_id"],
             "modality": media_type,
-            "category": current["category"],
-            "discrete_label": current["discrete_label"],
-            "quality_score": current["quality_score"],
+            "category": current.get("category", ""),
+            "discrete_label": current.get("discrete_label", ""),
+            "quality_score": current.get("quality_score", 0),
             "index": index + 1,
             "total": len(sequence),
             "media_type": media_type,
-            "video_url": f"/experiment/media/{session['id']}?v={index}",
-            "media_url": f"/experiment/media/{session['id']}?v={index}",
+            "video_url": media_url,
+            "media_url": media_url,
         }
     return payload
 

@@ -226,8 +226,11 @@ class RepositoryTests(unittest.TestCase):
 
     def test_local_schema_answers_are_recorded_with_metadata(self):
         _, survey_id = self._import()
-        surveys.toggle_survey(survey_id)  # archived → open
+        # 归档问卷按产品规则不可重新开放（另见 test_archived_survey_cannot_be_published）；
+        # 这里仅构造一份「已发布的本地问卷」夹具，用于验证答卷元数据落盘。
         survey = surveys.load_survey(survey_id)
+        survey["status"] = "open"
+        surveys._save(survey)
         session = {
             "id": "ETEST01", "survey_id": survey_id, "survey_token": survey["token"],
             "participant_code": "P01", "status": "running", "current_index": 0,
@@ -256,6 +259,77 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(local["ip_hash"], questionnaire.hash_ip("127.0.0.1")[1])
         self.assertEqual(local["schema_version"], 1)
         self.assertTrue(local["valid"])
+
+    def test_archived_survey_cannot_be_published(self):
+        """历史导入问卷是归档证据，不能被 toggle 成可填写的在线问卷。"""
+        _, survey_id = self._import()
+        survey = surveys.load_survey(survey_id)
+        self.assertEqual(survey["status"], "archived")
+        with self.assertRaisesRegex(ValueError, "不可重新开放"):
+            surveys.toggle_survey(survey_id)
+        self.assertEqual(surveys.load_survey(survey_id)["status"], "archived")
+        with self.assertRaisesRegex(ValueError, "不接受新答卷"):
+            surveys.start_response(survey["token"], "P01")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        self.assertEqual(client.get(f"/q/{survey['token']}").status_code, 404)
+        self.assertEqual(client.get(f"/api/public/surveys/{survey['token']}").status_code, 404)
+        page = client.get("/surveys").text
+        self.assertIn("历史导入归档", page)
+        self.assertNotIn("重新开放", page)
+        self.assertNotIn("copy-link", page)
+        self.assertNotIn("toggle-survey", page)
+
+    def test_kind_is_persisted_on_edit(self):
+        """切换视频/音乐量表后 kind 必须落盘，否则刺激编号按旧模态归一化。"""
+        _, survey_id = self._import()
+        surveys.update_survey(
+            survey_id, "音乐版问卷", "", schema=questionnaire.default_schema("audio"), kind="audio"
+        )
+        survey = surveys.load_survey(survey_id)
+        self.assertEqual(survey["kind"], "audio")
+        self.assertEqual(surveys.infer_kind(survey), "audio")
+        self.assertEqual(survey_meta.survey_metadata(survey_id)["kind"], "audio")
+        record = survey_meta.build_response_record(survey, {"q2": "3"}, strict=False)
+        self.assertEqual(record["normalized"]["q2"], "3.mp3")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        self.assertEqual(
+            client.put(f"/api/surveys/{survey_id}", json={
+                "title": "切回视频版", "schema": questionnaire.default_schema("video"), "kind": "video",
+            }).status_code, 200
+        )
+        self.assertEqual(surveys.load_survey(survey_id)["kind"], "video")
+
+    def test_schema_survey_rejects_legacy_response_channel(self):
+        """带 schema 的问卷不能走旧固定量表通道，避免答卷分裂在两处。"""
+        _, survey_id = self._import()
+        survey = surveys.load_survey(survey_id)
+        survey["status"] = "open"
+        surveys._save(survey)
+        with self.assertRaisesRegex(ValueError, "自定义量表"):
+            surveys.public_submit(survey["token"], "ENOSESSION", {})
+
+    def test_legacy_survey_uses_schema_fallback_everywhere(self):
+        """无 schema 的旧问卷在统计与导出侧也必须拿到一致的默认量表。"""
+        surveys.SURVEYS_DIR.mkdir(parents=True, exist_ok=True)
+        legacy = {
+            "id": "QLEGACY", "token": "legacytok", "title": "旧版问卷", "description": "",
+            "created_at": "2026-01-01T00:00:00", "status": "open",
+            "settings": {}, "materials": [],
+        }
+        (surveys.SURVEYS_DIR / "QLEGACY.json").write_text(
+            json.dumps(legacy, ensure_ascii=False), encoding="utf-8"
+        )
+        self.assertEqual(len(surveys.get_schema(legacy)), 12)
+        self.assertEqual(survey_meta.survey_metadata("QLEGACY")["n_questions"], 12)
+        record = survey_meta.build_response_record(legacy, {"q2": "1.mp4"}, strict=False)
+        self.assertEqual(record["normalized"]["q2"], "1.mp4")
+        self.assertIn("1、", survey_meta.export_wjx_csv("QLEGACY"))
+
+        client = TestClient(app, raise_server_exceptions=False)
+        self.assertEqual(client.get("/api/surveys/QLEGACY/responses.csv").status_code, 200)
+        self.assertEqual(client.get("/api/surveys/QLEGACY/metadata").status_code, 200)
 
     def test_web_endpoints(self):
         client = TestClient(app)
@@ -287,6 +361,121 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(client.get(f"/api/surveys/imports/{batch_id}/source.csv").status_code, 200)
         self.assertEqual(client.get("/api/surveys/imports").json()["imports"][0]["batch_id"], batch_id)
         self.assertIn("HTTP 导入测试", client.get("/surveys").text)
+
+    def _open_survey_with_session(self, survey_id: str, stimuli: list[str]) -> tuple[str, str]:
+        """构造可填写问卷与本地会话，返回 (token, session_id)。"""
+
+        survey = surveys.load_survey(survey_id)
+        survey["status"] = "open"
+        surveys._save(survey)
+        session_id = "ESESSION01"
+        session = {
+            "id": session_id, "survey_id": survey_id, "survey_token": survey["token"],
+            "survey_title": survey["title"], "participant_code": "P01",
+            "status": "running", "current_index": 0,
+            "sequence": [
+                {"stimulus_id": name, "modality": "video", "category": "HVHA"} for name in stimuli
+            ],
+            "responses": [],
+            "created_at": "2026-11-16T00:00:00", "updated_at": "2026-11-16T00:00:00",
+        }
+        surveys.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        (surveys.SESSIONS_DIR / f"{session_id}.json").write_text(
+            json.dumps(session, ensure_ascii=False), encoding="utf-8"
+        )
+        return survey["token"], session_id
+
+    @staticmethod
+    def _answers(rater: str, stimulus: str) -> dict:
+        return {
+            "q1": rater, "q2": stimulus, "q3": "7", "q4": "6",
+            "q5": "产生了较为清晰的主导情绪", "q6": "愉快", "q7": "总时长75%以上",
+            "q8": "主导情绪从头到尾基本稳定", "q9": "从未接触过", "q10": "基本完全理解",
+            "q11": ["没有问题"], "q12": "没有",
+        }
+
+    def test_response_detail_repository(self):
+        """单份答卷可定位、可带题目定义读取，会话过滤不串数据。"""
+
+        _, survey_id = self._import()
+        records = survey_meta.iter_responses(survey_id)
+        target = records[0]
+        self.assertIsNotNone(survey_meta.get_response(survey_id, target["response_id"]))
+        self.assertIsNone(survey_meta.get_response(survey_id, "SRNOTEXIST"))
+        detail = survey_meta.response_detail(survey_id, target["response_id"])
+        self.assertEqual(detail["survey"]["id"], survey_id)
+        self.assertEqual(len(detail["schema"]), 12)
+        self.assertEqual(detail["response"]["answers"], target["answers"])
+        with self.assertRaises(FileNotFoundError):
+            survey_meta.response_detail(survey_id, "SRNOTEXIST")
+        self.assertEqual(survey_meta.total_responses(), 4)
+        self.assertEqual(survey_meta.responses_for_session(survey_id, "EUNKNOWN"), [])
+
+    def test_jsonl_answers_advance_session_progress(self):
+        """新版答卷不写 session.responses，进度仍须按 JSONL 正确累加。"""
+
+        _, survey_id = self._import()
+        token, session_id = self._open_survey_with_session(survey_id, ["1.mp4", "2.mp4"])
+        first = surveys.submit_schema_answers(token, session_id, self._answers("P01", "1.mp4"))
+        self.assertEqual(first["session"]["answered"], 1)
+        self.assertEqual(first["session"]["total"], 2)
+        self.assertEqual(first["session"]["status"], "running")
+        second = surveys.submit_schema_answers(token, session_id, self._answers("P01", "2.mp4"))
+        self.assertEqual(second["session"]["answered"], 2)
+        self.assertEqual(second["session"]["status"], "completed")
+        self.assertEqual(len(survey_meta.responses_for_session(survey_id, session_id)), 2)
+        self.assertEqual(survey_meta.total_responses(), 6)
+
+    def test_response_detail_api_and_legacy_redirects(self):
+        """详情 API、本轮结果 API 与旧版页面重定向形成完整可达链路。"""
+
+        _, survey_id = self._import()
+        token, session_id = self._open_survey_with_session(survey_id, ["1.mp4"])
+        submitted = surveys.submit_schema_answers(token, session_id, self._answers("P01", "1.mp4"))
+        response_id = submitted["response_id"]
+        client = TestClient(app, raise_server_exceptions=False)
+
+        detail = client.get(f"/api/surveys/{survey_id}/responses/{response_id}")
+        self.assertEqual(detail.status_code, 200, detail.text)
+        self.assertEqual(len(detail.json()["schema"]), 12)
+        self.assertEqual(detail.json()["response"]["answers"]["q6"], "愉快")
+        self.assertEqual(
+            client.get(f"/api/surveys/{survey_id}/responses/SRMissing").status_code, 404
+        )
+
+        result = client.get(f"/api/public/surveys/{token}/sessions/{session_id}/result")
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(len(result.json()["responses"]), 1)
+        self.assertEqual(len(result.json()["schema"]), 12)
+        self.assertEqual(
+            client.get(f"/api/public/surveys/{token}/sessions/EWRONG/result").status_code, 404
+        )
+
+        legacy = client.get("/responses", follow_redirects=False)
+        self.assertEqual(legacy.status_code, 302)
+        self.assertEqual(legacy.headers["location"], "/survey-data")
+        redirect = client.get(f"/experiment?session={session_id}", follow_redirects=False)
+        self.assertEqual(redirect.status_code, 302)
+        location = redirect.headers["location"]
+        self.assertIn(f"survey_id={survey_id}", location)
+        self.assertIn(f"response_id={response_id}", location)
+        self.assertIn("tab=responses", location)
+        page = client.get(location).text
+        self.assertIn("答卷明细", page)
+        self.assertIn("responseDetail", page)
+
+        old_session = {
+            "id": "ELEGACY", "participant_code": "X", "status": "completed",
+            "current_index": 0, "sequence": [], "responses": [],
+            "created_at": "2026-11-15T00:00:00", "updated_at": "2026-11-15T00:00:00",
+        }
+        (surveys.SESSIONS_DIR / "ELEGACY.json").write_text(
+            json.dumps(old_session, ensure_ascii=False), encoding="utf-8"
+        )
+        self.assertEqual(
+            client.get("/experiment?session=ELEGACY", follow_redirects=False).headers["location"],
+            "/survey-data",
+        )
 
 
 if __name__ == "__main__":

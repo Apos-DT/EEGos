@@ -1215,3 +1215,29 @@ body { overflow-x: hidden; }
 .callout { border:1px solid #bfe6d9; background:#effaf6; border-radius:10px; padding:12px 14px; color:#0c574d; font-size:10.5px; line-height:1.6; }
 .callout strong { display:block; margin-bottom:4px; }
 #tab-overview, #tab-quality { overflow-x:auto; padding-bottom:14px; }
+
+/* ------------------------------------------------------------------ 答卷详情 */
+.response-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:0 20px 14px; border-bottom:1px solid var(--line); }
+.response-toolbar .search-box { min-width:260px; }
+.response-toolbar .hint { color:var(--brand-2); font-size:10.5px; }
+.response-detail { margin:4px 20px 20px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface); overflow:hidden; box-shadow:var(--shadow-sm); }
+.response-detail-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; padding:15px 18px; border-bottom:1px solid var(--line); background:var(--surface-soft); }
+.response-detail-head h3 { margin:0 0 4px; font-size:13px; font-weight:650; color:var(--ink); }
+.response-detail-head p { margin:0; font-size:10px; color:var(--muted); }
+.detail-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.response-detail-body { padding:0 18px 18px; }
+.response-detail-body .kv-grid { padding:0; margin-bottom:6px; }
+.response-detail-body .section-title { padding:14px 0 8px; }
+.response-detail-body .table-scroll { padding:0; }
+.response-detail-body .table-scroll .data { min-width:560px; }
+.answer-raw { font-weight:600; color:var(--ink); word-break:break-all; }
+.answer-norm { font-size:10px; color:var(--muted); word-break:break-all; }
+
+/* 公开问卷完成页：本轮作答回顾 */
+.public-review { margin-top:18px; text-align:left; max-height:440px; overflow:auto; }
+.public-review > h4 { margin:0 0 10px; font-size:12px; color:var(--ink); }
+.review-card { border:1px solid var(--line); border-radius:10px; margin-bottom:12px; overflow:hidden; background:#fff; }
+.review-head { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:9px 12px; background:var(--surface-soft); font-size:10.5px; color:var(--ink); }
+.review-head .mono { color:var(--muted); }
+.public-review .data { width:100%; font-size:10.5px; min-width:0; }
+.public-review .data thead th { font-size:10px; }

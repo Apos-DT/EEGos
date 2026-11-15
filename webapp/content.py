@@ -11,7 +11,7 @@ NAV_GROUPS = [
         "label": "实验",
         "items": [
             {"key": "surveys", "label": "问卷管理", "href": "/surveys", "icon": "play"},
-            {"key": "responses", "label": "实验问卷", "href": "/responses", "icon": "chart"},
+            {"key": "survey_data", "label": "问卷数据", "href": "/survey-data", "icon": "chart"},
             {"key": "media", "label": "素材库", "href": "/media", "icon": "sliders"},
         ],
     },
@@ -41,11 +41,11 @@ NAV = [item for group in NAV_GROUPS for item in group["items"]]
 
 PAGE_META = {
     "dashboard": "工作台",
-    "experiment": "现场实验（旧版）",
+    "experiment": "实验会话",
     "surveys": "问卷管理",
     "survey_builder": "新建问卷",
     "survey_data": "问卷数据与元数据",
-    "responses": "实验问卷",
+    "responses": "问卷数据",
     "media": "素材库",
     "stimuli": "素材库",
     "audit": "历史预评价审计",
@@ -101,7 +101,7 @@ DOCS = [
     },
     {
         "no": "09", "title": "测试计划与验收标准", "category": "测试",
-        "desc": "30 个测试用例、17 项自动化测试与验收矩阵。",
+        "desc": "30 个测试用例、36 项自动化测试与验收矩阵。",
         "docx": "EEG-EmoStudio_09_测试计划与验收标准.docx", "pdf": "09.pdf",
     },
     {

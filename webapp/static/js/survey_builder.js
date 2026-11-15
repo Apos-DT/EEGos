@@ -212,15 +212,17 @@
       schema: questions,
     };
     const surveyId = form.dataset.surveyId;
-    const button = document.getElementById("saveSurvey");
-    EEG.setBusy(button, true, "保存中…");
+    // 页面顶部与底部各有一个 submit 按钮，必须一起禁用，否则请求期间可重复创建/更新问卷
+    const submitButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
+    const setSubmitBusy = (busy) => submitButtons.forEach((btn) => EEG.setBusy(btn, busy, "保存中…"));
+    setSubmitBusy(true);
     try {
       const url = surveyId ? `/api/surveys/${encodeURIComponent(surveyId)}` : "/api/surveys";
       await EEG.api(url, { method: surveyId ? "PUT" : "POST", body: JSON.stringify(payload) });
       EEG.toast("问卷已保存，分享链接已生成", "success");
       setTimeout(() => { window.location.href = "/surveys"; }, 500);
     } catch (err) {
-      EEG.setBusy(button, false);
+      setSubmitBusy(false);
       error.textContent = err.message;
       error.hidden = false;
     }

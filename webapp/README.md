@@ -21,10 +21,11 @@ python -m webapp
 |---|---|---|
 | `/` | 工作台 | 三大功能域入口、资产与流水线 |
 | `/surveys` | 问卷管理 | 选素材、自定义题目、生成分享链接、编辑/关闭问卷 |
-| `/survey-data` | 问卷数据与元数据 | 答卷元数据、题目作答率、质量诊断、历史 CSV 导入、两种格式导出 |
-| `/responses` | 实验问卷 | 响应明细、完成率、CSV 导出 |
+| `/survey-data` | 问卷数据与元数据 | 逐题答卷查看/搜索/筛选、答卷元数据、题目作答率、质量诊断、历史 CSV 导入、两种格式导出 |
 | `/media` | 素材库 | 240 条视频/音乐，同步、预览、筛选 |
-| `/q/{token}` | 被试端 | 打开链接、播放素材、填写问卷 |
+| `/q/{token}` | 被试端 | 打开链接、播放素材、填写问卷、完成后回看本轮逐题作答 |
+
+**旧版页面已下线**：`/experiment`（现场实验固定量表）与 `/responses`（旧版统计页）均 302 跳转到 `/survey-data`。前者带 `?session=...` 时会解析会话归属问卷并直达该轮答卷详情。会话 JSON 与旧版只读 API 保留，用于回溯历史数据，但不再提供任何新建现场实验的界面入口。
 | `/audit` | 历史预评价 | 240 材料/2,356 问卷归档，不进入日常流程 |
 | `/eeg` | 原始 EEG 处理 | EEGLAB 上传、滤波/ICA/分段/DE |
 | `/datasets` | 数据集与特征 | 上传 raw.npz、提取 DE、管理特征集 |
@@ -34,7 +35,7 @@ python -m webapp
 | `/system` | 系统状态 | 环境、API、任务、数据边界 |
 
 API 文档：`/api/swagger`。  
-核心 API：`/api/overview`、`/api/surveys`、`/api/media`、`/api/public/surveys/{token}`、`/api/experiment/responses`、`/api/eeg/uploads`、`/api/eeg/process`、`/api/datasets`、`/api/datasets/merge`、`/api/experiments`、`/api/jobs/{id}`。
+核心 API：`/api/overview`、`/api/surveys`、`/api/surveys/{id}/responses`、`/api/surveys/{id}/responses/{rid}`、`/api/media`、`/api/public/surveys/{token}`、`/api/experiment/responses`（旧版兼容）、`/api/eeg/uploads`、`/api/eeg/process`、`/api/datasets`、`/api/datasets/merge`、`/api/experiments`、`/api/jobs/{id}`。
 
 任务在进程内线程池运行，日志写入 `artifacts/web_jobs/`；训练/特征任务通过现有 CLI 子进程执行，避免 Web 层复制算法。
 
@@ -50,7 +51,7 @@ data/survey_responses/{survey_id}.jsonl       答卷，每行一条完整记录�
 data/survey_imports/{batch_id}.json           导入批次登记（行数/指纹/列映射）
 data/survey_imports/{batch_id}.source.csv     原始导出副本，按原始行号回查
 data/survey_imports/_staging/                 两步导入的暂存区
-data/experiment/sessions/                    旧版实验会话（保留，向后兼容）
+data/experiment/sessions/                    会话播放进度（新版/旧版共用，仅存游标）
 ```
 
 **题目 schema**：`webapp/questionnaire.py` 定义 5 种题型（text / rating / single / multiple / textarea）。每题可标注 `role`（rater、stimulus、valence、arousal、clarity、emotion、coverage、stability、familiarity、comprehension、issues、other 等），带角色的列才能参与归一化与质量评分；归一化复用 `eeg_emostudio/audit/normalize.py`，不重复实现清洗规则。内置视频/音乐两套 12 题标准量表，与既有问卷星导出逐列对应。
@@ -63,6 +64,8 @@ data/experiment/sessions/                    旧版实验会话（保留，向�
 
 **导出**：`responses.csv` 为问卷星兼容格式（7 个平台列 + 题目列、UTF-8 BOM，可与历史数据直接合并）；`responses.clean.csv` 为分析宽表（元数据列 + 每个 role 一列）。
 
-**新增 API**：`/api/questionnaire/templates`、`/api/surveys/{id}/schema|metadata|quality|responses|responses.csv|responses.clean.csv`、`/api/surveys/import/preview|commit`、`/api/surveys/imports`、`/api/surveys/imports/{batch}/source.csv`、`/api/public/surveys/{token}/sessions/{id}/answers`。
+**查看答卷**：`/survey-data?survey_id=X&tab=responses` 列出答卷，点「查看答卷」展开逐题的原始作答与归一化值，并可下载单份 JSON。支持 `response_id` 深链与 `session_id` 过滤；`/experiment?session=<id>` 会自动重定向到对应问卷的该轮答卷。被试完成一轮后，公开页「查看本轮作答」按会话回看自己的逐题答案（不会跨会话读取）。
 
-旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道与 `/responses` 页面，公开页会自动回退到固定表单，17 项既有测试保持不变。
+**新增 API**：`/api/questionnaire/templates`、`/api/surveys/{id}/schema|metadata|quality|responses|responses/{response_id}|responses.csv|responses.clean.csv`、`/api/surveys/import/preview|commit`、`/api/surveys/imports`、`/api/surveys/imports/{batch}/source.csv`、`/api/public/surveys/{token}/sessions/{id}/answers|result`。
+
+旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道，公开页会自动回退到固定表单；其历史会话数据仍可通过 `/api/experiment/responses.csv` 导出。全部 36 项自动化测试通过。

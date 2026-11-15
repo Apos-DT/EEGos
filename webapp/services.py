@@ -596,6 +596,17 @@ def overview() -> dict[str, Any]:
     from .experiment import summary as experiment_summary
 
     experiment = experiment_summary()
+    # 新版自定义量表答卷落在统一 JSONL 仓库，不写入 session.responses；
+    # 工作台统计需把两个口径相加，否则新问卷提交后计数仍为 0。
+    try:
+        from . import survey_meta  # 延迟导入，避免 survey_meta -> services 循环
+
+        stored = survey_meta.total_responses()
+        experiment["stored_responses"] = stored
+        experiment["legacy_responses"] = experiment["responses"]
+        experiment["responses"] = experiment["responses"] + stored
+    except Exception:
+        pass
     drill = _read_json(AUDIT_PROBE_DIR / "audit_summary.json", {}) or {}
     surveys = audit.get("surveys", {}) if audit else {}
     video = surveys.get("video", {})
@@ -642,10 +653,10 @@ def overview() -> dict[str, Any]:
     if not experiments:
         alerts.append({"severity": "info", "title": "尚无训练实验", "detail": "可先用合成数据验证流水线，再接入真实 EEG。"})
     if not experiment["sessions"]:
-        alerts.append({"severity": "info", "title": "尚无实验会话", "detail": "到“实验控制台”创建第一轮视频 + 问卷采集。"})
+        alerts.append({"severity": "info", "title": "尚无问卷会话", "detail": "到“问卷管理”新建问卷，并把分享链接发给被试。"})
     pipeline = [
-        {"key": "experiment", "label": "实验采集", "status": "done" if experiment["sessions"] else "idle", "detail": f"{experiment['sessions']} 个会话" if experiment["sessions"] else "待开始"},
-        {"key": "responses", "label": "问卷处理", "status": "done" if experiment["responses"] else "idle", "detail": f"{experiment['responses']} 条响应" if experiment["responses"] else "待采集"},
+        {"key": "experiment", "label": "问卷采集", "status": "done" if experiment["sessions"] else "idle", "detail": f"{experiment['sessions']} 个会话" if experiment["sessions"] else "待开始"},
+        {"key": "responses", "label": "答卷管理", "status": "done" if experiment["responses"] else "idle", "detail": f"{experiment['responses']} 份答卷" if experiment["responses"] else "待采集"},
         {"key": "eeg", "label": "EEG 清洗", "status": "done" if eeg_files else "idle", "detail": f"{eeg_files} 个原始文件" if eeg_files else "待导入"},
         {"key": "features", "label": "特征构建", "status": "done" if datasets else "idle", "detail": f"{len(datasets)} 个特征集" if datasets else "待上传"},
         {"key": "training", "label": "模型训练", "status": "done" if experiments else "idle", "detail": f"{len(experiments)} 次实验" if experiments else "待运行"},
@@ -666,7 +677,7 @@ def overview() -> dict[str, Any]:
             "sessions": experiment["sessions"],
             "responses": experiment["responses"],
             "participants": experiment["participants"],
-            "tests": 28,
+            "tests": 36,
         },
         "quality_grades": _grade_counts(quality),
         "quality_by_modality": quality_by_modality,
