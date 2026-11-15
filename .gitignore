@@ -1,0 +1,70 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# ===== 原始数据与大型数据集（体积/许可/版权原因，不入库）=====
+山科数据集/
+data/SEED_IV/
+data/media/
+data/raw/
+data/interim/
+data/experiment/
+data/surveys/
+data/uploads/
+data/eeg_uploads/
+文献/
+
+# ===== 运行时产物（可由脚本重新生成）=====
+artifacts/
+ppt_assets/
+deliverables/
+.workbuddy/
+
+# ===== 中间产物 =====
+*.pkl
+*.joblib
+
+# ===== 大二进制文件 =====
+*.npz
+*.pt
+*.pth
+*.mp4
+*.mp3
+*.wav
+*.avi
+*.mkv
+*.flac
+*.edf
+*.bdf
+*.cnt
+*.vhdr
+*.vmrk
+*.eeg
+*.set
+*.fdt
+*.pptx
+
+# ===== 原有工作脚本的中间产物 =====
+工作脚本/pptx_imgs/
+工作脚本/*.log
+工作脚本/_tmp_*
+
+# ===== Office / 浏览器临时文件 =====
+~$*
+.edge-profile/
+.chrome-profile/
+.chrome-cdp/
+.chrome-qa-*/
+.edge-qa/
+.edge-qa-*/
+.dsh-office-*/
+
+# ===== IDE / 系统文件 =====
+.DS_Store
+Thumbs.db
+desktop.ini
