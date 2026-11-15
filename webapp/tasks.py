@@ -10,16 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .config import AUDIT_DIR, EXPERIMENTS_DIR, PROCESSED_DIR, RAW_DIR, ROOT, SELECTION_DIR
 from .jobs import Job, manager
-from .services import (
-    AUDIT_DIR,
-    EXPERIMENTS_DIR,
-    PROCESSED_DIR,
-    RAW_DIR,
-    ROOT,
-    SELECTION_DIR,
-    _read_json,
-)
+from .services import _read_json
 
 PYTHON = sys.executable
 

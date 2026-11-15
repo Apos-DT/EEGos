@@ -16,29 +16,19 @@ from typing import Any
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-MEDIA_DIR = ROOT / "data" / "media"
-VIDEO_DIR = MEDIA_DIR / "video"
-AUDIO_DIR = MEDIA_DIR / "audio"
-MANIFEST = MEDIA_DIR / "manifest.json"
-
-SOURCE_VIDEO_CANDIDATES = [
-    ROOT / "山科数据集" / "视频压缩v2",
-    ROOT / "山科数据集" / "VIDEOS" / "视频压缩v2",
-]
-SOURCE_AUDIO_CANDIDATES = [
-    ROOT / "山科数据集" / "音乐测试v2",
-    ROOT / "山科数据集" / "音乐测试v2" / "音乐测试v2",
-]
-MAPPING = {
-    "video": ROOT / "山科数据集" / "视频对应关系.csv",
-    "audio": ROOT / "山科数据集" / "音乐对应关系.csv",
-}
-QUALITY = {
-    "video": ROOT / "research" / "quality" / "video" / "视频质量排序.csv",
-    "audio": ROOT / "research" / "quality" / "audio" / "音乐歌曲质量排序.csv",
-}
-SELECTED = ROOT / "artifacts" / "selection" / "selected_materials.csv"
+from .config import (
+    AUDIO_DIR,
+    MANIFEST,
+    MAPPING,
+    MEDIA_DIR,
+    QUALITY,
+    ROOT,
+    SELECTED,
+    SOURCE_AUDIO_CANDIDATES,
+    SOURCE_VIDEO_CANDIDATES,
+    VIDEO_DIR,
+    cache_by,
+)
 
 
 def _first_existing(paths: list[Path]) -> Path:
@@ -177,6 +167,16 @@ def load_manifest(refresh: bool = True) -> dict[str, Any]:
         return build_manifest(copy_missing=False)
 
 
+# 按「输入源」签名缓存，而不是按 manifest 自身：build_manifest 每次都会重写
+# manifest.json，若把 manifest 的 mtime 纳入签名，就会写一次失效一次、永不命中。
+@cache_by(
+    "media_library",
+    lambda: VIDEO_DIR,
+    lambda: AUDIO_DIR,
+    lambda: list(MAPPING.values()),
+    lambda: list(QUALITY.values()),
+    lambda: SELECTED,
+)
 def library_payload() -> dict[str, Any]:
     data = load_manifest(refresh=True)
     items = data["items"]

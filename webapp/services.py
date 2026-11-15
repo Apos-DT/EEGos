@@ -23,24 +23,26 @@ import numpy as np
 
 from eeg_emostudio.data.manifest import load_features, write_feature_dataset
 
+from .config import (
+    ARTIFACTS,
+    AUDIT_DIR,
+    AUDIT_PROBE_DIR,
+    AUDIO_DIR,
+    DATA_DIR,
+    DELIVERABLES_DIR,
+    EXPERIMENTS_DIR,
+    PROCESSED_DIR,
+    QUALITY,
+    RAW_DIR,
+    ROOT,
+    SELECTION_DIR,
+    UPLOAD_DIR,
+    VIDEO_DIR,
+    WEB_JOBS_DIR,
+    cache_by,
+    cache_stats,
+)
 from .content import APP_VERSION, DOCS, MODELS
-from .media import AUDIO_DIR, VIDEO_DIR
-
-ROOT = Path(__file__).resolve().parents[1]
-ARTIFACTS = ROOT / "artifacts"
-AUDIT_DIR = ARTIFACTS / "audit"
-AUDIT_PROBE_DIR = ARTIFACTS / "audit_probe"
-SELECTION_DIR = ARTIFACTS / "selection"
-EXPERIMENTS_DIR = ARTIFACTS / "experiments"
-WEB_JOBS_DIR = ARTIFACTS / "web_jobs"
-DATA_DIR = ROOT / "data"
-RAW_DIR = DATA_DIR / "raw"
-PROCESSED_DIR = DATA_DIR / "processed"
-UPLOAD_DIR = DATA_DIR / "uploads"
-DELIVERABLES_DIR = ROOT / "deliverables"
-
-for directory in (EXPERIMENTS_DIR, WEB_JOBS_DIR, RAW_DIR, PROCESSED_DIR, UPLOAD_DIR):
-    directory.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -152,10 +154,12 @@ def _count_eeg_files() -> int:
 # ---------------------------------------------------------------------------
 
 
+@cache_by("audit_summary", lambda: AUDIT_DIR)
 def audit_summary() -> dict[str, Any]:
     return _read_json(AUDIT_DIR / "audit_summary.json", {}) or {}
 
 
+@cache_by("quality_rows", lambda: AUDIT_DIR)
 def _quality_rows() -> list[dict[str, Any]]:
     rows = _read_csv(AUDIT_DIR / "quality_combined.csv")
     if rows:
@@ -166,10 +170,7 @@ def _quality_rows() -> list[dict[str, Any]]:
             row["problem_rate"] = _number(row.get("problem_rate")) or 0.0
         return rows
     combined: list[dict[str, Any]] = []
-    for kind, path in [
-        ("video", ROOT / "research" / "quality" / "video" / "视频质量排序.csv"),
-        ("audio", ROOT / "research" / "quality" / "audio" / "音乐歌曲质量排序.csv"),
-    ]:
+    for kind, path in QUALITY.items():
         for row in _read_csv(path):
             combined.append(
                 {
@@ -222,6 +223,7 @@ def _category_summary(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+@cache_by("issue_rows", lambda: AUDIT_DIR)
 def _issue_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for kind, label in (("video", "视频"), ("audio", "音乐")):
@@ -273,6 +275,7 @@ def audit_payload() -> dict[str, Any]:
     }
 
 
+@cache_by("selection_payload", lambda: SELECTION_DIR)
 def selection_payload() -> dict[str, Any]:
     summary = _read_json(SELECTION_DIR / "selection_summary.json", {}) or {}
     rows = _read_csv(SELECTION_DIR / "selected_materials.csv")
@@ -311,6 +314,12 @@ def selection_payload() -> dict[str, Any]:
     }
 
 
+@cache_by(
+    "stimuli_payload",
+    lambda: SELECTION_DIR,
+    lambda: VIDEO_DIR,
+    lambda: AUDIO_DIR,
+)
 def stimuli_payload() -> dict[str, Any]:
     """Lean stimulus library: selected materials plus local-file availability."""
 
@@ -388,6 +397,12 @@ def _inspect_feature_npz(path: Path) -> dict[str, Any] | None:
     }
 
 
+@cache_by(
+    "feature_datasets",
+    lambda: PROCESSED_DIR,
+    lambda: ARTIFACTS / "demo",
+    lambda: EXPERIMENTS_DIR,
+)
 def list_feature_datasets() -> list[dict[str, Any]]:
     candidates: list[Path] = []
     for directory in (PROCESSED_DIR, ARTIFACTS / "demo"):
@@ -437,6 +452,12 @@ def _inspect_raw_npz(path: Path) -> dict[str, Any] | None:
     }
 
 
+@cache_by(
+    "raw_datasets",
+    lambda: RAW_DIR,
+    lambda: UPLOAD_DIR,
+    lambda: ARTIFACTS / "raw_demo",
+)
 def list_raw_datasets() -> list[dict[str, Any]]:
     candidates: list[Path] = []
     for directory in (RAW_DIR, UPLOAD_DIR, ARTIFACTS / "raw_demo"):
@@ -525,6 +546,7 @@ def _experiment_info(path: Path) -> dict[str, Any] | None:
     }
 
 
+@cache_by("experiments", lambda: EXPERIMENTS_DIR)
 def list_experiments() -> list[dict[str, Any]]:
     experiments = []
     for path in _experiment_dirs():
@@ -551,6 +573,7 @@ def resolve_experiment(run_id: str) -> Path | None:
 # ---------------------------------------------------------------------------
 
 
+@cache_by("docs", lambda: DELIVERABLES_DIR)
 def list_docs() -> list[dict[str, Any]]:
     result = []
     for doc in DOCS:
@@ -677,7 +700,7 @@ def overview() -> dict[str, Any]:
             "sessions": experiment["sessions"],
             "responses": experiment["responses"],
             "participants": experiment["participants"],
-            "tests": 36,
+            "tests": 46,
         },
         "quality_grades": _grade_counts(quality),
         "quality_by_modality": quality_by_modality,
@@ -719,6 +742,7 @@ def system_info() -> dict[str, Any]:
         "experiments": len(list_experiments()),
         "docs": len(list_docs()),
         "eeg_files": _count_eeg_files(),
+        "cache": cache_stats(),
     }
 
 

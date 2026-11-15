@@ -11,10 +11,8 @@ from typing import Any
 
 from eeg_emostudio.data.eeglab import load_eeglab_set, safe_extract_zip
 
-from .services import ARTIFACTS, ROOT
-
-UPLOAD_DIR = ROOT / "data" / "eeg_uploads"
-OUTPUT_DIR = ARTIFACTS / "eeg"
+from .config import EEG_UPLOAD_DIR as UPLOAD_DIR
+from .config import OUTPUT_DIR, ROOT
 
 
 def _safe_id(value: str) -> str:

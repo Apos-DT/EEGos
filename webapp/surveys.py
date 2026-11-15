@@ -22,10 +22,7 @@ from .questionnaire import (
     schema_for_survey,
     survey_kind,
 )
-from .services import ROOT
-
-SURVEYS_DIR = ROOT / "data" / "surveys"
-RESPONSES_DIR = ROOT / "data" / "survey_responses"
+from .config import RESPONSES_DIR, ROOT, SURVEYS_DIR, cache_by
 
 
 def _now() -> str:
@@ -318,6 +315,7 @@ def survey_by_token(token: str) -> dict[str, Any]:
     raise FileNotFoundError("问卷链接不存在")
 
 
+@cache_by("surveys", lambda: SURVEYS_DIR)
 def list_surveys() -> list[dict[str, Any]]:
     return [_public(survey) for survey in _all()]
 

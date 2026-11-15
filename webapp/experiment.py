@@ -25,12 +25,17 @@ from typing import Any
 
 import pandas as pd
 
-from .media import AUDIO_DIR, VIDEO_DIR, media_path
-from .services import ROOT, SELECTION_DIR
+from .config import (
+    AUDIO_DIR,
+    EXPERIMENT_DIR,
+    ROOT,
+    SELECTION_CSV,
+    SESSIONS_DIR,
+    VIDEO_DIR,
+    cache_by,
+)
+from .media import media_path
 
-EXPERIMENT_DIR = ROOT / "data" / "experiment"
-SESSIONS_DIR = EXPERIMENT_DIR / "sessions"
-SELECTION_CSV = SELECTION_DIR / "selected_materials.csv"
 _LOCK = Lock()
 
 LIKERT_LABELS = {
@@ -346,6 +351,7 @@ def abort_session(session_id: str) -> dict[str, Any]:
         return public_session(session)
 
 
+@cache_by("sessions", lambda: SESSIONS_DIR)
 def list_sessions() -> list[dict[str, Any]]:
     if not SESSIONS_DIR.exists():
         return []
@@ -359,6 +365,7 @@ def list_sessions() -> list[dict[str, Any]]:
     return sessions
 
 
+@cache_by("experiment_summary", lambda: SESSIONS_DIR)
 def summary() -> dict[str, Any]:
     sessions = list_sessions()
     all_responses: list[dict[str, Any]] = []
