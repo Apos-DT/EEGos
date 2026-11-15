@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 
-OUT = r"C:\Users\24114\Desktop\EEG Emotion Recognition\音乐质量评分输出"
+OUT = r"C:\Users\24114\Desktop\EEG Emotion Recognition\research\quality\audio"
 rows = pd.read_pickle(OUT + r"\_rows.pkl")
 res = pd.read_pickle(OUT + r"\_res.pkl")
 EMO = ["悲伤/失落", "激昂", "愉快", "温馨/放松", "恐惧/不安"]

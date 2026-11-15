@@ -1,7 +1,8 @@
 # EEG-EmoStudio：脑电情绪识别数据制备与模型训练工作台
 
 > 面向跨被试 EEG 情绪识别的“实验采集 → EEG 处理 → 模型训练”一体化系统。  
-> 同时按软件工程本科毕业设计规范组织需求、设计、实现、测试与论文材料。
+> 同时按软件工程本科毕业设计规范组织需求、设计、实现、测试与论文材料。  
+> GitHub 仓库：[Apos-DT/EEGos](https://github.com/Apos-DT/EEGos)（项目代号 EEG-EmoStudio）。
 
 **当前版本**：V0.5.0（可分享问卷 + 素材库）  
 **文档版本**：V1.2（2026-11-15）  
@@ -19,7 +20,7 @@
 | 音乐刺激 | 120 首，标注片段约 60 s，四象限各 30 | `山科数据集/音乐测试v2/音乐测试v2/` |
 | 视频预评价 | 1,269 条原始问卷，去重后 1,227 条，11 名评分者 | `山科数据集/374437060_...csv` |
 | 音乐预评价 | 1,087 条原始问卷，去重后 1,072 条，9 名评分者 | `山科数据集/376653806_...csv` |
-| 质量排序 | 视频/音乐各 120 条，S/A/B/C/D 五级 | `视频质量评分输出/`、`音乐质量评分输出/` |
+| 质量排序 | 视频/音乐各 120 条，S/A/B/C/D 五级 | `research/quality/video/`、`research/quality/audio/` |
 | **SEED-IV** | **15 被试 × 3 sessions × 24 trials = 1,080 trial；62 通道、5 频带、4 类；37,575 个 4 s 窗口** | `data/SEED_IV/` |
 | 素材库 | 120 视频 + 120 音乐；统一纳管 | `data/media/` |
 
@@ -109,27 +110,45 @@ class_names 可选，字符串数组
 
 ## 3. 目录结构
 
+顶层按「代码 / 文档 / 研究过程资料 / 本地数据 / 运行产物」五类组织，后两类默认由 `.gitignore` 排除。
+
 ```text
-eeg_emostudio/               # 可安装/可直接运行的 Python 包
-  audit/                     # 问卷、映射、媒体、质量表审计与选材
-  data/                      # 预处理、DE 特征、划分、清单
-  models/                    # MLP / DGCNN / DualView / EEGNet
-  training/                  # LOSO、指标、训练循环
-  reporting/                 # 图表与 HTML 报告
-  cli.py                     # 统一命令行入口
-configs/                     # 预留 YAML 配置（后续接入）
-webapp/                      # FastAPI + Jinja2 + 原生 CSS/JS 本地控制台
-docs/                        # 毕业设计文档（Markdown 源）
-docs/assets/                 # 架构图、数据流图、甘特图、数据实体图
-deliverables/                # Word/Excel 交付物
-artifacts/                   # 运行产物（审计、选材、演示、实验）
-tests/                       # unittest 测试
-scripts/                     # 图表与文档构建脚本
-工作脚本/                     # 原有数据探索脚本（保留不动）
-山科数据集/                   # 原始数据（不移动、不改名）
-视频质量评分输出/              # 既有质量评分结果（作为输入证据）
-音乐质量评分输出/
-文献/                        # 9 篇可公开获取的参考文献 PDF
+EEGos/
+├── README.md · pyproject.toml · requirements.txt · run_web.py · .gitignore
+│
+│  ── 代码（可运行、全部入库）──────────────────────
+├── eeg_emostudio/           # 核心算法包，cli.py 为统一入口
+│   ├── audit/               # 问卷、映射、媒体、质量表审计与选材
+│   ├── data/                # 预处理、DE 特征、SEED-IV 适配、划分、清单
+│   ├── models/              # MLP / DGCNN / DualView / EEGNet
+│   ├── training/            # LOSO、指标、训练循环
+│   └── reporting/           # 图表与 HTML 报告
+├── webapp/                  # FastAPI + Jinja2 + 原生 CSS/JS 本地控制台
+├── tests/                   # unittest 测试（17 项）
+├── scripts/                 # 图表、DOCX/PPT/工作簿构建脚本
+├── configs/                 # 预留 YAML 配置（后续接入）
+│
+│  ── 文档（毕设规范）──────────────────────────────
+├── docs/                    # 00–17 毕业设计文档（Markdown 源，唯一事实源）
+│   └── assets/              # 架构图、数据流图、甘特图、数据实体图
+│
+│  ── 研究过程资料 ─────────────────────────────────
+├── research/                # 见 research/README.md
+│   ├── quality/video/       # 视频预评价质量排序（select 的输入证据）
+│   ├── quality/audio/       # 音乐预评价质量排序
+│   ├── references/          # 参考文献清单（CSV/XLSX）
+│   ├── weekly/              # 周工作汇报
+│   └── legacy/              # 原有数据探索/评分脚本（保留不动）
+│
+│  ── 本地数据（体积/许可原因不入库）──────────────
+├── data/                    # raw/processed/SEED_IV/media；仅 README 与清单 JSON 入库
+├── 山科数据集/              # 原始刺激与问卷（项目约定：不移动、不改名）
+├── 文献/                    # 9 篇可公开获取的参考文献 PDF
+│
+│  ── 运行产物（可由脚本再生成，不入库）──────────
+├── artifacts/               # 审计、选材、演示、实验
+├── deliverables/            # Word/Excel/PDF 交付物
+└── ppt_assets/             # 组会汇报页面截图
 ```
 
 ---
@@ -183,4 +202,4 @@ scripts/                     # 图表与文档构建脚本
 
 ## 7. 引用与致谢
 
-系统实现参考了 EEG 情绪识别综述、跨被试域适应与图/原型方法，以及 DEAP、MPED、FACED 等公开数据集的实验范式。完整文献列表见 `参考文献清单/参考文献清单_汇总.xlsx` 与 `docs/04_文献综述与需求依据.md`。原始数据、质量评分与文献由课题组提供；本仓库不重新分发受版权保护的刺激材料。
+系统实现参考了 EEG 情绪识别综述、跨被试域适应与图/原型方法，以及 DEAP、MPED、FACED 等公开数据集的实验范式。完整文献列表见 `research/references/参考文献清单_汇总.xlsx` 与 `docs/04_文献综述与需求依据.md`。原始数据、质量评分与文献由课题组提供；本仓库不重新分发受版权保护的刺激材料。

@@ -27,7 +27,7 @@ RNG = np.random.default_rng(SEED)
 
 ROOT = r"C:\Users\24114\Desktop\EEG Emotion Recognition"
 DATA = os.path.join(ROOT, "山科数据集")
-OUT = os.path.join(ROOT, "音乐质量评分输出")
+OUT = os.path.join(ROOT, "research/quality/audio")
 os.makedirs(OUT, exist_ok=True)
 
 SURVEY = os.path.join(DATA, "376653806_按文本_情绪诱发情况评估（音乐）_1088_1087(Sheet1).csv")

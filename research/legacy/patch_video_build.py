@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 import re
 
-p = r"C:\Users\24114\Desktop\EEG Emotion Recognition\工作脚本\生成视频交付物.py"
+p = r"C:\Users\24114\Desktop\EEG Emotion Recognition\research\legacy\生成视频交付物.py"
 s = open(p, encoding="utf-8").read()
 repl = [
-    ("音乐质量评分输出", "视频质量评分输出"),
+    ("research/quality/audio", "research/quality/video"),
     ("音乐歌曲质量评分与排序.xlsx", "视频质量评分与排序.xlsx"),
     ("音乐歌曲质量排序.csv", "视频质量排序.csv"),
     ("离散情绪分类排序.csv", "视频离散情绪分类排序.csv"),

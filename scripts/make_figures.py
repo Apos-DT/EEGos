@@ -194,8 +194,8 @@ def quality_figure():
     root = Path(__file__).resolve().parent.parent
     rows = []
     for kind, path in [
-        ("视频", root / "视频质量评分输出" / "视频质量排序.csv"),
-        ("音乐", root / "音乐质量评分输出" / "音乐歌曲质量排序.csv"),
+        ("视频", root / "research" / "quality" / "video" / "视频质量排序.csv"),
+        ("音乐", root / "research" / "quality" / "audio" / "音乐歌曲质量排序.csv"),
     ]:
         frame = pd.read_csv(path, encoding="utf-8-sig")
         for grade, count in frame["质量等级"].value_counts().items():

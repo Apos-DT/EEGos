@@ -49,10 +49,10 @@ deliverables/
 *.fdt
 *.pptx
 
-# ===== 原有工作脚本的中间产物 =====
-工作脚本/pptx_imgs/
-工作脚本/*.log
-工作脚本/_tmp_*
+# ===== 历史探索脚本的中间产物（research/legacy/）=====
+research/legacy/pptx_imgs/
+research/legacy/*.log
+research/legacy/_tmp_*
 
 # ===== Office / 浏览器临时文件 =====
 ~$*

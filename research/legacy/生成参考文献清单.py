@@ -6,7 +6,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-OUT = r"C:\Users\24114\Desktop\EEG Emotion Recognition\参考文献清单"
+OUT = r"C:\Users\24114\Desktop\EEG Emotion Recognition\research\references"
 os.makedirs(OUT, exist_ok=True)
 
 # 字段：编号, PPT写法, 标题, 作者, 期刊/会议, 年份, DOI/官方链接, 开放获取, 备注, PPT页码

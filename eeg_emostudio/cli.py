@@ -27,8 +27,8 @@ from .reporting.html import render_loso_report
 from .training.trainer import TrainConfig, run_loso, run_subject_dependent
 
 QUALITY_FILES = {
-    "video": "视频质量评分输出/视频质量排序.csv",
-    "audio": "音乐质量评分输出/音乐歌曲质量排序.csv",
+    "video": "research/quality/video/视频质量排序.csv",
+    "audio": "research/quality/audio/音乐歌曲质量排序.csv",
 }
 
 

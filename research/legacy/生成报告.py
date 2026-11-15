@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = r"C:\Users\24114\Desktop\EEG Emotion Recognition"
-OUT = os.path.join(ROOT, "音乐质量评分输出")
+OUT = os.path.join(ROOT, "research/quality/audio")
 res = pd.read_pickle(os.path.join(OUT, "_res.pkl")).sort_values("rank").reset_index(drop=True)
 res["tags"] = res["tags"].fillna("").replace("", "无")
 rows = pd.read_pickle(os.path.join(OUT, "_rows.pkl"))

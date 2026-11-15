@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import pandas as pd
 
-r = pd.read_csv(r"C:\Users\24114\Desktop\EEG Emotion Recognition\音乐质量评分输出\音乐歌曲质量排序.csv",
+r = pd.read_csv(r"C:\Users\24114\Desktop\EEG Emotion Recognition\research\quality\audio\音乐歌曲质量排序.csv",
                 encoding="utf-8-sig")
 c = {k: k for k in r.columns}
 for _, x in r.head(25).iterrows():

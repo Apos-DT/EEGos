@@ -35,8 +35,8 @@ MAPPING = {
     "audio": ROOT / "山科数据集" / "音乐对应关系.csv",
 }
 QUALITY = {
-    "video": ROOT / "视频质量评分输出" / "视频质量排序.csv",
-    "audio": ROOT / "音乐质量评分输出" / "音乐歌曲质量排序.csv",
+    "video": ROOT / "research" / "quality" / "video" / "视频质量排序.csv",
+    "audio": ROOT / "research" / "quality" / "audio" / "音乐歌曲质量排序.csv",
 }
 SELECTED = ROOT / "artifacts" / "selection" / "selected_materials.csv"
 

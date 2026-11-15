@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 
-res = pd.read_csv(r"C:\Users\24114\Desktop\EEG Emotion Recognition\工作脚本\_tmp_res.csv", encoding="utf-8-sig")
+res = pd.read_csv(r"C:\Users\24114\Desktop\EEG Emotion Recognition\research\legacy\_tmp_res.csv", encoding="utf-8-sig")
 print(res.groupby("cat").agg(n=("sid", "size"), score=("Score", "mean"), base=("Base", "mean"),
                              E=("E", "mean"), C=("C", "mean"), L=("L", "mean"),
                              hit=("hit_rate", "mean"), w=("w", "mean")).round(2))

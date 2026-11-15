@@ -22,8 +22,8 @@ DEFAULT_MEDIA = {
     "audio": ("音乐测试v2", "音乐测试v2"),
 }
 DEFAULT_QUALITY = {
-    "video": "视频质量评分输出/视频质量排序.csv",
-    "audio": "音乐质量评分输出/音乐歌曲质量排序.csv",
+    "video": "research/quality/video/视频质量排序.csv",
+    "audio": "research/quality/audio/音乐歌曲质量排序.csv",
 }
 
 
