@@ -79,15 +79,28 @@ Browser
   ├── 原生 CSS 设计系统（webapp/static/css/app.css）
   └── 原生 JS：API、轮询、任务控制台、SVG 图表
         │ fetch / JSON
-FastAPI (webapp/main.py)
-  ├── 页面路由（11 个，含工作台）
-  ├── 只读 API（overview/audit/selection/datasets/experiments/docs/jobs）
-  ├── 写入 API（audit/selection/features/train/upload）
-  ├── 文件下载（DOCX/PDF/审计 CSV/打包 ZIP）
-  └── JobManager（线程池 + 子进程）
-        │ subprocess
-现有 CLI：eeg_emostudio eeglab/audit/select/features/train；实验会话由 webapp/experiment.py 管理
-        │
+webapp/main.py（仅装配：create_app + 静态挂载 + include_router + 可选令牌中间件）
+  └── webapp/routers/（按域拆分，85 条路由）
+        ├── core           工作台 / 系统状态 / 任务查询
+        ├── survey         问卷管理 / 量表版本 / 答卷与元数据 / 历史导入
+        ├── public_survey  被试端填答与作答回看（公开）
+        ├── experiment     旧版现场会话存储与媒体播放（兼容层）
+        ├── media          素材库浏览 / 预览 / 同步
+        ├── prep           质量审计 / 平衡选材
+        ├── datasets       EEG 清洗 / 特征 / 训练 / 实验记录
+        └── files          下载出口（白名单校验）
+              │
+        webapp/common.py（模板环境、Range 响应、CSV、任务序列化）
+        webapp/schemas.py（请求体契约）
+              │
+        webapp/services.py + media / surveys / survey_meta / experiment / eeg（领域逻辑）
+              │
+        eeg_emostudio/paths.py（唯一路径源）+ webapp/config.py（运行参数、缓存）
+              │
+        JobManager（线程池 + 子进程）
+              │ subprocess
+现有 CLI：eeg_emostudio eeglab/audit/select/features/train
+              │
 artifacts/、data/、deliverables/（同一套事实源）
 ```
 
@@ -121,6 +134,14 @@ GET /api/jobs/{id}
 - 训练 → `artifacts/experiments/{run_id}/`；
 - 审计/选材 → `artifacts/audit/`、`artifacts/selection/`；
 - 文档 → `deliverables/`，PDF 在 `deliverables/pdf/`。
+
+### 3.4 分层与配置（V0.7 骨架重排）
+
+- **装配与实现分离**：`main.py` 从 1333 行降到约 90 行，只做 app 创建、静态挂载、路由注册与令牌中间件；85 条路由按域分布在 `webapp/routers/`，单文件不超过 310 行。新增接口只需改对应域，不必再动装配文件。
+- **路径唯一来源**：全部目录常量由 `eeg_emostudio/paths.py` 定义，`webapp/config.py` 只做别名与运行参数。此前 11 处 `ROOT / "data" / ...` 分散在 9 个模块，改目录必然漏改；同时消除了 `services ↔ media ↔ surveys` 的循环引用。
+- **依赖方向单向**：`routers → services / media / surveys → config → paths`。核心算法包不反向依赖 Web 层，CLI 与 Web 共用同一套路径。
+- **进程内缓存**：全量扫盘的聚合函数（工作台统计、素材清单、答卷计数、会话汇总）按目录签名缓存，签名由「文件数 + 最大 mtime + 总字节 + 目录 mtime」组成，文件一变即自动重算，写操作不需要显式失效。缓存返回深拷贝——`overview()` 会就地合并新版与旧版答卷计数，共享对象会导致重复累加。
+- **部署形态**：单进程 `python -m webapp`，无 Node 构建、无外部数据库；另有 `start.bat` / `start.sh` 与 `Dockerfile`，容器只装代码，`data/`、`artifacts/` 通过卷挂载留在宿主机。
 
 ---
 
@@ -191,20 +212,24 @@ Swagger：`/api/swagger`。
 
 ```powershell
 pip install -r requirements.txt
-python -m webapp
+python -m webapp          # 或 start.bat / ./start.sh
 # 打开 http://127.0.0.1:8770
 ```
 
 - 端口占用：`$env:EEG_WEB_PORT=8771; python -m webapp`
-- 只监听本机：默认 `127.0.0.1`；
-- 测试：`python -m unittest discover -s tests -v`（36 项，含 Web 与问卷/素材测试）；
+- 监听地址：默认 `0.0.0.0`，因为被试扫码填答必须局域网可达；只在本机用可设 `$env:EEG_WEB_HOST="127.0.0.1"`；
+- 管理端口令：`$env:EEG_WEB_TOKEN="自定义字符串"`。启用后除 `/q`、`/api/public`、`/api/health` 外全部要求令牌，从链接带一次 `?token=` 即写入 Cookie（7 天）。**把服务暴露到局域网采集时必须设置**，否则同网段任何人可查看并导出全部答卷；
+- 容器：`docker build -t eeg-emostudio .`，运行示例见根目录 README；
+- 测试：`python -m unittest discover -s tests -v`（46 项，含 Web 与问卷/素材测试）；
 - 任务日志：`artifacts/web_jobs/`。
 
 ---
 
 ## 7. 安全、隐私与边界
 
-- 默认仅本机访问，无公网暴露；
+- 默认监听 `0.0.0.0` 以使被试能扫码填答；管理端由 `EEG_WEB_TOKEN` 保护，未设令牌时启动日志会明确告警；
+- 被试端（`/q`、`/api/public`）不校验令牌，但只返回本会话数据：`result` 接口会校验会话确实属于该 token 对应的问卷，无法跨会话读取他人答案；
+- 答卷中的 IP 只保留地区与不可逆哈希（sha256 前 12 位），不落明文；
 - 上传文件只接受 `raw.npz`，校验 `x/y/subjects` 与形状，≤300 MB；
 - 下载文件使用白名单（审计/选材文件名、文档编号），避免路径遍历；
 - 页面不渲染姓名/IP；报告只显示被试伪 ID；
@@ -217,7 +242,7 @@ python -m webapp
 
 - 本文是 `02_软件需求规格说明书` FR-16（命令行）的 Web 扩展；
 - 页面/接口/任务模型可作为论文“系统实现”章节的截图与说明；
-- 测试结果并入 `09_测试计划与验收标准`（36 项）；
+- 测试结果并入 `09_测试计划与验收标准`（46 项）；
 - 数据边界并入 `05_数据审计报告` 与 `08_数据字典`；
 - 视觉设计不作为创新点，创新点仍是数据门控 + 双视角 + 多原型。
 

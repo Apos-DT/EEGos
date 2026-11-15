@@ -3,9 +3,12 @@
 本地研究控制台，FastAPI + Jinja2 + 原生 CSS/JS；主界面无 CDN、无 node 构建、无外部数据库。
 
 ```powershell
-python -m webapp
-# http://127.0.0.1:8770
+python -m webapp      # 或 start.bat / ./start.sh；容器方式见根目录 README
+# 管理端 http://127.0.0.1:8770/surveys
+# 被试端 /q/<token>（手机需与电脑同一局域网）
 ```
+
+配置项（`EEG_WEB_HOST` / `EEG_WEB_PORT` / `EEG_WEB_TOKEN` / 数据目录外挂）见根目录 README 的「Web 控制台」一节。
 
 > **改代码后必须重启服务**。`python -m webapp` 默认 `reload=False`，Jinja2 却会自动重新读取被修改的模板文件；若不重启，就会出现「旧 Python 进程 + 新模板」错配——新模板引用了旧路由没有传入的变量，页面直接返回 500（2026-11-15 `/surveys/new` 曾因此报错）。开发期可启用自动重载：
 >
@@ -25,7 +28,6 @@ python -m webapp
 | `/media` | 素材库 | 240 条视频/音乐，同步、预览、筛选 |
 | `/q/{token}` | 被试端 | 打开链接、播放素材、填写问卷、完成后回看本轮逐题作答 |
 
-**旧版页面已下线**：`/experiment`（现场实验固定量表）与 `/responses`（旧版统计页）均 302 跳转到 `/survey-data`。前者带 `?session=...` 时会解析会话归属问卷并直达该轮答卷详情。会话 JSON 与旧版只读 API 保留，用于回溯历史数据，但不再提供任何新建现场实验的界面入口。
 | `/audit` | 历史预评价 | 240 材料/2,356 问卷归档，不进入日常流程 |
 | `/eeg` | 原始 EEG 处理 | EEGLAB 上传、滤波/ICA/分段/DE |
 | `/datasets` | 数据集与特征 | 上传 raw.npz、提取 DE、管理特征集 |
@@ -34,10 +36,34 @@ python -m webapp
 | `/documents` | 项目文档 | 14 份 DOCX/PDF 下载 |
 | `/system` | 系统状态 | 环境、API、任务、数据边界 |
 
+**旧版页面已下线**：`/experiment`（现场实验固定量表）与 `/responses`（旧版统计页）均 302 跳转到 `/survey-data`。前者带 `?session=...` 时会解析会话归属问卷并直达该轮答卷详情。会话 JSON 与旧版只读 API 保留，用于回溯历史数据，但不再提供任何新建现场实验的界面入口。
+
+### 模块地图（V0.7 骨架重排）
+
+`main.py` 从 1333 行降到约 90 行，只负责装配；新增接口去对应域的 router 里加，不必再动装配文件。
+
+| 文件 | 职责 |
+|---|---|
+| `config.py` | 唯一配置源：目录（转发 `eeg_emostudio/paths.py`）、host/port/token、按 mtime 签名的进程内缓存 |
+| `common.py` | 模板环境、`render()`、任务序列化、Range 媒体响应、CSV 下载、问卷读取 |
+| `schemas.py` | 全部请求体模型（`schema` 字段用 alias 规避 Pydantic 内置方法冲突） |
+| `routers/core.py` | 工作台、系统状态、任务查询 |
+| `routers/survey.py` | 问卷管理、量表版本、答卷与元数据、历史 CSV 导入 |
+| `routers/public_survey.py` | 被试端填答与作答回看（公开，不校验令牌） |
+| `routers/experiment.py` | 旧版现场会话存储与媒体播放（兼容层） |
+| `routers/media.py` | 素材库浏览、预览、同步 |
+| `routers/prep.py` | 质量审计与平衡选材（一次性制备） |
+| `routers/datasets.py` | EEG 上传清洗、特征、数据集、训练、实验记录 |
+| `routers/files.py` | 全部下载出口（白名单校验） |
+
+路径统一由 `eeg_emostudio/paths.py` 定义，`webapp/config.py` 只做别名。改数据目录不再需要逐个模块改常量。
+
 API 文档：`/api/swagger`。  
 核心 API：`/api/overview`、`/api/surveys`、`/api/surveys/{id}/responses`、`/api/surveys/{id}/responses/{rid}`、`/api/media`、`/api/public/surveys/{token}`、`/api/experiment/responses`（旧版兼容）、`/api/eeg/uploads`、`/api/eeg/process`、`/api/datasets`、`/api/datasets/merge`、`/api/experiments`、`/api/jobs/{id}`。
 
 任务在进程内线程池运行，日志写入 `artifacts/web_jobs/`；训练/特征任务通过现有 CLI 子进程执行，避免 Web 层复制算法。
+
+**读盘缓存**：工作台统计、素材清单、答卷计数、会话汇总这些「全量扫盘」的聚合函数，按目录签名（文件数 + 最大 mtime + 总字节 + 目录 mtime）缓存在进程内，文件一变签名就变、自动重算，不需要手动清缓存。写操作不需要显式失效——签名本身来自磁盘。缓存内保存深拷贝，因为 `overview()` 会就地合并新版与旧版答卷计数，共享对象会导致重复累加。
 
 ## 问卷 schema 与元数据管理（V0.6）
 
@@ -68,4 +94,4 @@ data/experiment/sessions/                    会话播放进度（新版/旧版�
 
 **新增 API**：`/api/questionnaire/templates`、`/api/surveys/{id}/schema|metadata|quality|responses|responses/{response_id}|responses.csv|responses.clean.csv`、`/api/surveys/import/preview|commit`、`/api/surveys/imports`、`/api/surveys/imports/{batch}/source.csv`、`/api/public/surveys/{token}/sessions/{id}/answers|result`。
 
-旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道，公开页会自动回退到固定表单；其历史会话数据仍可通过 `/api/experiment/responses.csv` 导出。全部 36 项自动化测试通过。
+旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道，公开页会自动回退到固定表单；其历史会话数据仍可通过 `/api/experiment/responses.csv` 导出。全部 46 项自动化测试通过。

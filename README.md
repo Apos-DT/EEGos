@@ -33,7 +33,7 @@
 - `features`：`raw.npz` → 带通/陷波/重参考/重采样 → 5 频带 DE 特征。
 - `train`：被试依赖与 LOSO 跨被试训练；MLP、DGCNN、DualView-MultiProto、EEGNet；指标、置信区间、混淆矩阵、检查点。
 - `demo`：合成特征端到端跑通，生成自包含 HTML 报告，专门用于软件验收，不作为科研结论。
-- 36 项单元/集成测试全部通过（含 Web 与问卷/素材测试）；实际数据审计结果与既有质量报告的 22/29 条问题视频（音乐）计数一致。
+- 46 项单元/集成测试全部通过（含 Web 与问卷/素材测试）；实际数据审计结果与既有质量报告的 22/29 条问题视频（音乐）计数一致。
 
 ### 1.3 实际数据审计的关键结论
 
@@ -83,15 +83,40 @@ python -m eeg_emostudio train --data data/features/sub01.npz --out experiments/s
 python -m unittest discover -s tests -v
 ```
 
-### Web 控制台（V0.5）
+### Web 控制台
 
-```powershell
-python -m webapp
-# 管理端 http://127.0.0.1:8770/surveys
-# 被试端由问卷生成的 /q/<token> 分享链接进入
+```bash
+python -m webapp          # 或 Windows 双击 start.bat / Linux、macOS 执行 ./start.sh
+# 管理端   http://127.0.0.1:8770/surveys
+# 被试端   问卷里生成的 /q/<token> 分享链接（手机需与电脑同一局域网）
 ```
 
-10 个日常页面（含工作台），按三大功能域组织：实验（问卷管理、实验问卷、素材库）、EEG 信号（原始 EEG 处理、数据集与特征）、模型训练（模型训练、实验记录），以及项目文档与系统状态；另有 1 个历史预评价归档页。  
+启动时会打印本机地址与被试访问地址。**正式采集前请设置管理端口令**，否则同网段任何人都能查看并导出全部答卷：
+
+```powershell
+$env:EEG_WEB_TOKEN = "自己定一个口令"
+python -m webapp
+# 之后打开页面时带一次 ?token=口令，浏览器会记住 7 天
+```
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `EEG_WEB_HOST` | `0.0.0.0` | 被试扫码需局域网可达；只在本机用可设 `127.0.0.1` |
+| `EEG_WEB_PORT` | `8770` | 端口 |
+| `EEG_WEB_TOKEN` | 空（不校验） | 管理端口令；`/q`、`/api/public`、`/api/health` 永远公开 |
+| `EEG_WEB_RELOAD` | `0` | 设 `1` 后改代码自动重载（仅开发用） |
+| `EEG_DATA_DIR` / `EEG_ARTIFACTS_DIR` / `EEG_DELIVERABLES_DIR` | `data/` `artifacts/` `deliverables/` | 数据外挂（外部磁盘、容器卷） |
+
+容器方式（镜像只含代码，数据留在宿主机）：
+
+```bash
+docker build -t eeg-emostudio .
+docker run --rm -p 8770:8770 \
+  -v "$PWD/data:/data" -v "$PWD/artifacts:/artifacts" \
+  -e EEG_WEB_TOKEN=换成你的口令 eeg-emostudio
+```
+
+10 个日常页面（含工作台），按三大功能域组织：实验（问卷管理、问卷数据、素材库）、EEG 信号（原始 EEG 处理、数据集与特征）、模型训练（模型训练、实验记录），以及项目文档与系统状态；另有 1 个历史预评价归档页。  
 API 文档：`/api/swagger`；页面与 API 共用同一套数据/算法。
 
 ### raw.npz 契约
@@ -124,7 +149,7 @@ EEGos/
 │   ├── training/            # LOSO、指标、训练循环
 │   └── reporting/           # 图表与 HTML 报告
 ├── webapp/                  # FastAPI + Jinja2 + 原生 CSS/JS 本地控制台
-├── tests/                   # unittest 测试（36 项）
+├── tests/                   # unittest 测试（46 项）
 ├── scripts/                 # 图表、DOCX/PPT/工作簿构建脚本
 ├── configs/                 # 预留 YAML 配置（后续接入）
 │
