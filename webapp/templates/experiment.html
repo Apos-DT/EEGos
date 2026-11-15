@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+{% block title %}实验控制台 · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/responses">{{ icon('chart', 16) }} 查看问卷数据</a>
+{% endblock %}
+
+{% block content %}
+<div class="experiment-layout">
+  <section class="panel" id="setupPanel">
+    <div class="panel-head">
+      <div>
+        <h2>开始一轮实验</h2>
+        <p>系统按四象限轮转播放视频；每个视频结束后填写同一份问卷。</p>
+      </div>
+      <span class="badge badge-green">本地采集</span>
+    </div>
+
+    <form id="setupForm" class="setup-form">
+      <div class="form-grid">
+        <div class="field">
+          <label for="participantCode">被试编号 <span class="req">*</span></label>
+          <input id="participantCode" name="participant_code" required maxlength="64" placeholder="例如 P01 / S01" autocomplete="off">
+          <div class="hint">与 EEG 记录文件使用同一编号，便于后续对齐。</div>
+        </div>
+        <div class="field">
+          <label for="experimentLimit">本轮刺激数</label>
+          <select id="experimentLimit" name="limit">
+            <option value="4">4 个（约 10–20 分钟，预实验）</option>
+            <option value="8" selected>8 个（约 25–40 分钟）</option>
+            <option value="12">12 个（约 40–60 分钟）</option>
+            <option value="20">20 个（约 1–1.5 小时）</option>
+            <option value="40">40 个（全部视频，约 2–3 小时）</option>
+          </select>
+          <div class="hint">从 40 条已选视频中按 HVHA/HVLA/LVHA/LVLA 轮转抽取。</div>
+        </div>
+        <div class="field">
+          <label for="participantAge">年龄</label>
+          <input id="participantAge" name="age" type="number" min="10" max="100" placeholder="可选">
+        </div>
+        <div class="field">
+          <label for="participantGender">性别</label>
+          <select id="participantGender" name="gender">
+            <option value="">不填写</option>
+            <option value="女">女</option>
+            <option value="男">男</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sleepHours">昨晚睡眠（小时）</label>
+          <input id="sleepHours" name="sleep_hours" type="number" min="0" max="24" step="0.5" placeholder="可选">
+        </div>
+        <div class="field">
+          <label for="fatigue">当前疲劳（1–5）</label>
+          <select id="fatigue" name="fatigue">
+            <option value="">不填写</option>
+            <option value="1">1 · 很清醒</option>
+            <option value="2">2 · 较清醒</option>
+            <option value="3">3 · 一般</option>
+            <option value="4">4 · 较疲劳</option>
+            <option value="5">5 · 很疲劳</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mood">当前心情（1–9）</label>
+          <input id="mood" name="mood" type="number" min="1" max="9" step="1" placeholder="1 低落 — 9 愉快">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="participantNote">备注</label>
+        <input id="participantNote" name="note" maxlength="500" placeholder="可选：状态、佩戴设备、实验环境等">
+      </div>
+
+      <label class="checkline">
+        <input type="checkbox" id="consent" name="consent" checked>
+        <span>已向被试说明实验流程，并取得知情同意；数据仅保存在本机。</span>
+      </label>
+
+      <div class="setup-actions">
+        <button class="btn btn-primary" type="submit" id="startExperiment">{{ icon('play', 16) }} 开始实验</button>
+        <span class="hint">开始后会立即显示第一个视频。</span>
+      </div>
+      <div id="setupError" class="form-error" hidden></div>
+    </form>
+  </section>
+
+  <aside class="panel protocol-panel">
+    <div class="panel-head"><div><h2>本轮协议</h2><p>视频播放 + 主观问卷</p></div></div>
+    <div class="protocol-step"><span class="protocol-num">01</span><div><strong>观看视频</strong><p>浏览器中播放当前刺激，不显示情绪类别，避免预期偏差。</p></div></div>
+    <div class="protocol-step"><span class="protocol-num">02</span><div><strong>填写问卷</strong><p>效价、唤醒、主导情绪、强度、熟悉度与是否看过。</p></div></div>
+    <div class="protocol-step"><span class="protocol-num">03</span><div><strong>自动留痕</strong><p>保存评分、刺激编号、类别、时间戳与观看时长。</p></div></div>
+    <div class="protocol-note">
+      <strong>EEG 对齐方式</strong>
+      <p>被试编号与 EEG 文件名保持一致；刺激顺序记录在会话 JSON 中，后续可在 EEG 处理页按事件对齐。</p>
+    </div>
+    <div class="protocol-note">
+      <strong>本地边界</strong>
+      <p>视频不复制、不上传；问卷写入 <span class="mono">data/experiment/sessions</span>。</p>
+    </div>
+  </aside>
+</div>
+
+<section class="runner-shell" id="runner" hidden>
+  <div class="runner-head">
+    <div>
+      <div class="eyebrow-inline"><span class="status-dot"></span><span id="runnerStatus">进行中</span></div>
+      <h2 id="runnerTitle">刺激 1 / 8</h2>
+      <p id="runnerParticipant">被试 P01</p>
+    </div>
+    <div class="runner-progress">
+      <div class="runner-progress-top"><span>完成进度</span><strong id="progressText">0 / 8</strong></div>
+      <div class="progress-track"><span id="progressBar" style="width:0%"></span></div>
+    </div>
+    <button class="btn btn-soft btn-sm" type="button" id="abortExperiment">结束本轮</button>
+  </div>
+
+  <div class="runner-grid">
+    <div class="video-card">
+      <video id="experimentVideo" controls playsinline preload="metadata"></video>
+      <div class="video-meta">
+        <span id="videoHint">请完整观看视频，结束后填写问卷。</span>
+        <span class="mono" id="videoClock">00:00</span>
+      </div>
+      <button class="btn btn-primary btn-block" type="button" id="showQuestionnaire">我看完了，填写问卷 {{ icon('arrow', 15) }}</button>
+    </div>
+
+    <div class="question-card" id="questionnaire" hidden>
+      <div class="question-head">
+        <div>
+          <span class="badge badge-blue">问卷</span>
+          <h3>看完这个视频，你感觉如何？</h3>
+        </div>
+        <span class="mono" id="questionStimulus"></span>
+      </div>
+      <form id="responseForm">
+        <div class="rating-block">
+          <div class="rating-label"><span>效价 Valence</span><strong id="valenceValue">5</strong></div>
+          <input type="range" id="valence" name="valence" min="1" max="9" step="1" value="5" aria-label="效价评分，1 到 9 分" title="拖动滑块选择 1–9 分">
+          <div class="rating-ends"><span>非常不愉快</span><span>非常愉快</span></div>
+          <div class="rating-scale" data-scale="valence" role="group" aria-label="效价快速选择">
+            {% for n in range(1, 10) %}<button type="button" data-value="{{ n }}">{{ n }}</button>{% endfor %}
+          </div>
+        </div>
+        <div class="rating-block">
+          <div class="rating-label"><span>唤醒 Arousal</span><strong id="arousalValue">5</strong></div>
+          <input type="range" id="arousal" name="arousal" min="1" max="9" step="1" value="5" aria-label="唤醒评分，1 到 9 分" title="拖动滑块选择 1–9 分">
+          <div class="rating-ends"><span>非常平静</span><span>非常激动</span></div>
+          <div class="rating-scale" data-scale="arousal" role="group" aria-label="唤醒快速选择">
+            {% for n in range(1, 10) %}<button type="button" data-value="{{ n }}">{{ n }}</button>{% endfor %}
+          </div>
+        </div>
+
+        <div class="field">
+          <label>主导情绪 <span class="req">*</span></label>
+          <div class="emotion-grid">
+            {% for item in discrete_choices %}
+            <label class="emotion-option">
+              <input type="radio" name="discrete" value="{{ item.value }}" required>
+              <span>{{ item.label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="form-grid compact">
+          <div class="field">
+            <label for="intensity">情绪强度（1–5）</label>
+            <select id="intensity" name="intensity">
+              <option value="1">1 · 很弱</option>
+              <option value="2">2 · 较弱</option>
+              <option value="3" selected>3 · 中等</option>
+              <option value="4">4 · 较强</option>
+              <option value="5">5 · 很强</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="familiarity">对片段熟悉度（1–5）</label>
+            <select id="familiarity" name="familiarity">
+              <option value="1">1 · 完全没看过</option>
+              <option value="2">2 · 不太熟悉</option>
+              <option value="3" selected>3 · 一般</option>
+              <option value="4">4 · 比较熟悉</option>
+              <option value="5">5 · 非常熟悉</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="checkline">
+          <input type="checkbox" id="previousViewed" name="previous_viewed">
+          <span>之前看过这个视频</span>
+        </label>
+        <div class="field">
+          <label for="responseNote">补充说明</label>
+          <input id="responseNote" name="note" maxlength="500" placeholder="可选：走神、设备不适、看过原片等">
+        </div>
+
+        <button class="btn btn-primary btn-block" type="submit" id="submitResponse">提交并进入下一个 {{ icon('arrow', 15) }}</button>
+        <div class="form-error" id="responseError" hidden></div>
+      </form>
+    </div>
+
+    <div class="completion-card" id="completion" hidden>
+      <div class="completion-icon">{{ icon('check', 30) }}</div>
+      <h3>本轮实验完成</h3>
+      <p>问卷已保存。可以导出 CSV，或开始下一名被试。</p>
+      <div class="completion-actions">
+        <a class="btn btn-primary" href="/responses">查看问卷数据 {{ icon('arrow', 15) }}</a>
+        <button class="btn btn-soft" type="button" id="newSession">开始下一名被试</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel mt-4" id="recentSessionsPanel">
+  <div class="panel-head">
+    <div><h2>最近实验会话</h2><p>本地 JSON 会话，刷新页面后可继续未完成的实验。</p></div>
+    <a class="btn btn-soft btn-sm" href="/responses">全部数据 {{ icon('arrow', 14) }}</a>
+  </div>
+  {% if sessions %}
+  <div class="session-list">
+    {% for session in sessions[:6] %}
+    <a class="session-row" href="/experiment?session={{ session.id }}" data-session="{{ session.id }}">
+      <div class="session-main"><strong>{{ session.participant_code }}</strong><span class="mono">{{ session.id }}</span></div>
+      <div class="session-meta"><span>{{ session.answered }} / {{ session.total }} 条</span><span>{{ session.created_at[:16].replace('T', ' ') }}</span></div>
+      <span class="badge {% if session.status == 'completed' %}badge-green{% else %}badge-amber{% endif %}">{{ '已完成' if session.status == 'completed' else '进行中' }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty" style="padding:20px"><p>还没有实验会话。填写上方被试编号开始第一轮。</p></div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/experiment.js') }}"></script>
+{% endblock %}

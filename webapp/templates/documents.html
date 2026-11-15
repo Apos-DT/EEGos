@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+
+{% block actions %}
+  <a class="btn btn-soft" href="/api/docs" target="_blank">{{ icon('external', 15) }} 文档 API</a>
+  <a class="btn btn-primary" href="/files/bundle">{{ icon('download', 15) }} 打包下载</a>
+{% endblock %}
+
+{% block content %}
+<div class="doc-filters">
+  <div class="search-box">{{ icon('search', 14) }}<input id="docSearch" placeholder="搜索文档标题 / 关键词…"></div>
+  <div class="chips">
+    <button class="chip active" data-filter="all">全部 {{ docs|length }}</button>
+    {% for cat in ['立项','需求','研究','数据','设计','测试','使用','论文','管理'] %}
+      {% if docs|selectattr('category','equalto',cat)|list|length %}
+      <button class="chip" data-filter="{{ cat }}">{{ cat }}</button>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <span class="table-count" id="docCount">{{ docs|length }} 份</span>
+</div>
+
+<div class="doc-grid" id="docGrid">
+  {% for doc in docs %}
+  <article class="doc-card" data-search="{{ doc.title }} {{ doc.desc }} {{ doc.category }}" data-group="{{ doc.category }}">
+    <span class="doc-no">{{ doc.no }}</span>
+    <span class="doc-cat">{{ doc.category }}</span>
+    <h3 class="doc-title">{{ doc.title }}</h3>
+    <p class="doc-desc">{{ doc.desc }}</p>
+    <div class="doc-actions">
+      {% if doc.docx_url %}<a class="btn btn-soft" href="{{ doc.docx_url }}">{{ icon('download', 12) }} DOCX</a>{% endif %}
+      {% if doc.pdf_url %}<a class="btn btn-soft" href="{{ doc.pdf_url }}" target="_blank">{{ icon('file', 12) }} PDF</a>{% endif %}
+    </div>
+  </article>
+  {% endfor %}
+  <div class="empty doc-empty" id="docEmpty" hidden><div class="empty-icon">{{ icon('file', 24) }}</div><h3>没有匹配的文档</h3><p>试试更短的关键词，或切换到“全部”。</p></div>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><div><h2 class="panel-title">交付包说明</h2><p class="panel-sub">DOCX 为可编辑源，PDF 用于快速预览；Markdown 源在项目 docs/ 目录。</p></div></div>
+  <div class="panel-body">
+    <div class="kv">
+      <dt>文档结构</dt><dd>01 可行性 → 02 需求 → 03 计划 → 04 文献 → 05 审计 → 06/07 设计 → 08 数据字典 → 09 测试 → 10 手册 → 11 论文 → 12 符合性 → 13 配置 → 14 开题。</dd>
+      <dt>使用建议</dt><dd>答辩前先看 02、05、09、12；写论文先看 04、11；系统操作看 10。</dd>
+      <dt>版本与校验</dt><dd>每份 DOCX/PDF 均有 SHA-256；下载包内附 deliverables_manifest.json 与 SHA256SUMS.txt。</dd>
+      <dt>注意</dt><dd>第 5 章真实实验数字仍待 EEG 接入后补齐；合成 demo 不进入性能表。</dd>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/documents.js') }}"></script>
+{% endblock %}

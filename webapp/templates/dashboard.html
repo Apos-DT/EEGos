@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+{% block title %}工作台 · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/media">{{ icon('sliders', 16) }} 素材库</a>
+<a class="btn btn-primary" href="/surveys/new">{{ icon('play', 16) }} 开始实验</a>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div>
+    <div class="hero-eyebrow"><span class="dot"></span> Daily research flow · local first</div>
+    <h2 class="hero-title">实验、EEG、训练，在一条日常流水线上。</h2>
+    <p>播放刺激并收集主观评分，导入 EEGLAB 原始数据，清洗、分段、提特征，再用 LOSO 训练与对比。只保留实际会用到的步骤。</p>
+    <div class="hero-actions">
+      <a class="btn btn-ghost btn-lg" href="/surveys/new">{{ icon('play', 17) }} 开始一轮实验</a>
+      <a class="btn btn-ghost btn-lg" href="/eeg" style="background:rgba(111,242,219,.14);border-color:rgba(111,242,219,.32);color:#d8fff8">{{ icon('waves', 17) }} 导入 EEGLAB</a>
+    </div>
+    <div class="hero-meta">
+      <span>{{ icon('lock', 13) }} 数据不出本机</span>
+      <span>{{ icon('check', 13) }} 17 项测试通过</span>
+      <span>{{ icon('layers', 13) }} LOSO 防泄漏</span>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="signal-card">
+      <div class="signal-head"><span>Signal preview / DE</span><span class="signal-live"><i></i> LIVE</span></div>
+      <svg class="signal-chart" viewBox="0 0 300 110" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="waveFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#6ff2db" stop-opacity=".28"/><stop offset="1" stop-color="#6ff2db" stop-opacity="0"/></linearGradient></defs>
+        <path d="M0 72 C14 72 18 46 31 46 S45 82 59 82 71 34 87 34 101 74 115 74 128 54 143 54 157 88 171 88 186 24 201 24 213 70 227 70 241 45 255 45 270 65 300 65 L300 110 L0 110 Z" fill="url(#waveFill)"/>
+        <path d="M0 72 C14 72 18 46 31 46 S45 82 59 82 71 34 87 34 101 74 115 74 128 54 143 54 157 88 171 88 186 24 201 24 213 70 227 70 241 45 255 45 270 65 300 65" fill="none" stroke="#6ff2db" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <div class="signal-stats"><div><small>CHANNELS</small><strong>62</strong></div><div><small>BANDS</small><strong>5</strong></div><div><small>WINDOW</small><strong>4.0 s</strong></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="domain-grid">
+  <a class="domain-card" href="/surveys" style="--domain:#0c7368;--domain-soft:#e9fbf7">
+    <div class="domain-head"><span class="domain-icon">{{ icon('play', 18) }}</span><span class="domain-kicker">EXPERIMENT</span></div>
+    <h3>实验</h3>
+    <p>视频/刺激播放、实验前状态、主观评分；按四象限轮转，避免相邻同类。</p>
+    <div class="domain-foot"><span><strong>{{ data.stats.sessions }}</strong> 会话 · <strong>{{ data.stats.responses }}</strong> 条评分</span><span>{{ icon('arrow', 14) }}</span></div>
+  </a>
+  <a class="domain-card" href="/eeg" style="--domain:#2f6fed;--domain-soft:#eaf0ff">
+    <div class="domain-head"><span class="domain-icon">{{ icon('waves', 18) }}</span><span class="domain-kicker">EEG SIGNAL</span></div>
+    <h3>EEG 信号</h3>
+    <p>EEGLAB 连续数据 → 滤波/重参考/ICA → 事件分段 → 5 频带 DE。</p>
+    <div class="domain-foot"><span><strong>{{ data.eeg.files }}</strong> 原始文件 · <strong>{{ data.stats.datasets }}</strong> 特征集</span><span>{{ icon('arrow', 14) }}</span></div>
+  </a>
+  <a class="domain-card" href="/training" style="--domain:#6941c6;--domain-soft:#f4f0ff">
+    <div class="domain-head"><span class="domain-icon">{{ icon('cpu', 18) }}</span><span class="domain-kicker">MODEL</span></div>
+    <h3>模型训练</h3>
+    <p>固定划分、LOSO 防泄漏；真实运行与合成验收严格分开。</p>
+    <div class="domain-foot"><span><strong>{{ data.stats.experiments }}</strong> 次运行 · <strong>{{ data.best_experiment.accuracy|pct if data.best_experiment else '—' }}</strong> 最佳</span><span>{{ icon('arrow', 14) }}</span></div>
+  </a>
+</div>
+
+<div class="stats-grid">
+  <article class="stat-card" style="--tint:#e9fbf7;--tone:#0c7368">
+    <div class="stat-top"><span>实验会话</span><span class="stat-icon">{{ icon('play', 16) }}</span></div>
+    <div class="stat-value">{{ data.stats.sessions }}<small>个</small></div>
+    <div class="stat-foot"><span class="up">{{ data.stats.participants }} 名被试</span><span>·</span><span>{{ data.stats.responses }} 条评分</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#eaf0ff;--tone:#2f6fed">
+    <div class="stat-top"><span>实验问卷</span><span class="stat-icon">{{ icon('chart', 16) }}</span></div>
+    <div class="stat-value">{{ data.stats.responses }}<small>条</small></div>
+    <div class="stat-foot"><span class="up">{{ data.experiment.completion_rate }}% 完成率</span><span>·</span><span>{{ data.stats.participants }} 名被试</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#fff6e8;--tone:#b45309">
+    <div class="stat-top"><span>原始 EEG</span><span class="stat-icon">{{ icon('waves', 16) }}</span></div>
+    <div class="stat-value">{{ data.eeg.files }}<small>个</small></div>
+    <div class="stat-foot"><span class="up">{{ data.stats.datasets }} 个特征集</span><span>·</span><span>SEED-IV + 上传</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#f4f0ff;--tone:#6941c6">
+    <div class="stat-top"><span>模型运行</span><span class="stat-icon">{{ icon('activity', 16) }}</span></div>
+    <div class="stat-value">{{ data.stats.experiments }}<small>次</small></div>
+    <div class="stat-foot"><span class="up">{{ data.experiments[0].folds if data.experiments else 0 }} 折 LOSO</span><span>·</span><span>{{ data.stats.tests }} 项测试通过</span></div>
+  </article>
+</div>
+
+<div class="layout-2">
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head">
+        <div><h2 class="panel-title">最近实验会话</h2><p class="panel-sub">被试、进度、状态；点击继续未完成的一轮</p></div>
+        <a class="panel-link" href="/responses">全部问卷 {{ icon('arrow', 13) }}</a>
+      </div>
+      {% if data.experiment.latest_sessions %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>被试</th><th>会话</th><th>进度</th><th>状态</th><th>时间</th></tr></thead>
+          <tbody>
+          {% for session in data.experiment.latest_sessions[:6] %}
+            <tr>
+              <td class="strong">{{ session.participant_code }}</td>
+              <td class="mono">{{ session.id }}</td>
+              <td>{{ session.answered }} / {{ session.total }}</td>
+              <td><span class="badge {% if session.status == 'completed' %}badge-green{% elif session.status == 'running' %}badge-amber{% else %}badge-gray{% endif %}">{{ '已完成' if session.status == 'completed' else ('进行中' if session.status == 'running' else '已结束') }}</span></td>
+              <td class="muted">{{ session.created_at[:16].replace('T', ' ') }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty" style="padding:22px"><div class="empty-icon">{{ icon('play', 22) }}</div><p>还没有实验会话。开始第一轮视频 + 问卷。</p><a class="btn btn-primary btn-sm" href="/surveys/new">开始实验</a></div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div><h2 class="panel-title">最近训练</h2><p class="panel-sub">真实运行与合成验收分开标记</p></div>
+        <a class="panel-link" href="/experiments">全部实验 {{ icon('arrow', 13) }}</a>
+      </div>
+      {% if data.recent_experiments %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>运行</th><th>设置</th><th class="num">Accuracy</th><th class="num">Macro-F1</th><th></th></tr></thead>
+          <tbody>
+          {% for run in data.recent_experiments[:5] %}
+            <tr>
+              <td class="strong"><span class="run-dot {{ 'demo' if run.is_demo else '' }}"></span>{{ run.label }}</td>
+              <td><span class="badge badge-neutral">{{ run.setting_label }}</span> <span class="muted">{{ run.model }}</span></td>
+              <td class="num strong">{{ run.accuracy|pct }}</td>
+              <td class="num">{{ run.macro_f1|pct }}</td>
+              <td class="right">{% if run.report_url %}<a class="mini-link" href="{{ run.report_url }}" target="_blank">报告 {{ icon('external', 12) }}</a>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty" style="padding:22px"><div class="empty-icon">{{ icon('activity', 22) }}</div><p>还没有训练记录。先用 trial 级 SEED-IV 跑 MLP 基线。</p><a class="btn btn-soft btn-sm" href="/training">去训练</a></div>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">日常流程</h2><p class="panel-sub">只保留实际使用的 5 步</p></div><span class="badge badge-teal">LOCAL</span></div>
+      <div class="panel-body">
+        <div class="pipeline">
+          {% for step in data.pipeline %}
+          <div class="pipe-step {{ step.status }}">
+            <span class="pipe-node">{% if step.status == 'done' %}{{ icon('check', 13) }}{% else %}{{ loop.index }}{% endif %}</span>
+            <div><div class="pipe-label">{{ step.label }}</div><div class="pipe-detail">{{ step.detail }}</div></div>
+            <span class="pipe-state">{{ '完成' if step.status == 'done' else '待运行' }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">快速入口</h2><p class="panel-sub">日常只用这四个动作</p></div></div>
+      <div class="quick-list">
+        <a class="quick-row" href="/surveys/new"><span class="quick-icon">{{ icon('play', 17) }}</span><span><strong>新建问卷</strong><small>选素材、生成分享链接</small></span>{{ icon('arrow', 14) }}</a>
+        <a class="quick-row" href="/media"><span class="quick-icon">{{ icon('sliders', 17) }}</span><span><strong>刺激库</strong><small>80 条正式材料，预览/筛选</small></span>{{ icon('arrow', 14) }}</a>
+        <a class="quick-row" href="/eeg"><span class="quick-icon">{{ icon('waves', 17) }}</span><span><strong>EEG 清洗</strong><small>EEGLAB → 分段 → DE</small></span>{{ icon('arrow', 14) }}</a>
+        <a class="quick-row" href="/training"><span class="quick-icon">{{ icon('cpu', 17) }}</span><span><strong>模型训练</strong><small>LOSO / 对比 / 报告</small></span>{{ icon('arrow', 14) }}</a>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

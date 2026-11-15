@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+{% block title %}问卷管理 · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/media">{{ icon('sliders', 15) }} 素材库</a>
+<a class="btn btn-primary" href="/surveys/new">{{ icon('play', 15) }} 新建问卷</a>
+{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+  <article class="stat-card" style="--tint:#e9fbf7;--tone:#0c7368">
+    <div class="stat-top"><span>问卷方案</span><span class="stat-icon">{{ icon('file', 16) }}</span></div>
+    <div class="stat-value">{{ surveys|length }}<small>个</small></div>
+    <div class="stat-foot"><span>{{ surveys|selectattr('status','equalto','open')|list|length }} 个开放</span><span>·</span><span>链接可分享</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#eaf0ff;--tone:#2f6fed">
+    <div class="stat-top"><span>收到响应</span><span class="stat-icon">{{ icon('chart', 16) }}</span></div>
+    <div class="stat-value">{{ surveys|sum(attribute='n_responses') }}<small>份</small></div>
+    <div class="stat-foot"><span>按会话统计</span><span>·</span><span>实时更新</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#fff4e2;--tone:#b45309">
+    <div class="stat-top"><span>素材总量</span><span class="stat-icon">{{ icon('layers', 16) }}</span></div>
+    <div class="stat-value">240<small>条</small></div>
+    <div class="stat-foot"><span>视频 120</span><span>·</span><span>音乐 120</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#f4f0ff;--tone:#6941c6">
+    <div class="stat-top"><span>正式实验</span><span class="stat-icon">{{ icon('check', 16) }}</span></div>
+    <div class="stat-value">80<small>条</small></div>
+    <div class="stat-foot"><span>S/A/B 优先</span><span>·</span><span>四象限平衡</span></div>
+  </article>
+</div>
+
+<div class="share-hint">
+  <strong>分享链接怎么给被试</strong>
+  <span>请用本机局域网地址打开本页（例如 <span class="mono">http://192.168.x.x:8770/surveys</span>），再复制链接；若显示 127.0.0.1，手机无法访问。</span>
+</div>
+
+<section class="panel mt-4">
+  <div class="panel-head">
+    <div><h2>问卷列表</h2><p>每个问卷生成一个固定分享链接；被试打开链接即可观看素材并填写。</p></div>
+    <span class="badge badge-blue">{{ surveys|length }} surveys</span>
+  </div>
+  {% if surveys %}
+  <div class="survey-list">
+    {% for survey in surveys %}
+    <article class="survey-card" data-survey="{{ survey.id }}">
+      <div class="survey-main">
+        <div class="survey-title-line">
+          <h3>{{ survey.title }}</h3>
+          <span class="badge {% if survey.status == 'open' %}badge-green{% else %}badge-gray{% endif %}">{{ '开放' if survey.status == 'open' else '已关闭' }}</span>
+        </div>
+        <p>{{ survey.description or '未填写说明' }}</p>
+        <div class="survey-meta">
+          <span>{{ survey.n_materials }} 个素材</span>
+          <span>{{ survey.n_video }} 视频 / {{ survey.n_audio }} 音乐</span>
+          <span>{{ survey.n_responses }} 份响应</span>
+          <span class="mono">{{ survey.created_at[:16].replace('T', ' ') }}</span>
+        </div>
+        <div class="share-line">
+          <code>{{ survey.public_path }}</code>
+          <button class="btn btn-soft btn-sm copy-link" type="button" data-path="{{ survey.public_path }}" data-base="{{ share_base }}">{{ icon('file', 12) }} 复制链接</button>
+          <a class="btn btn-soft btn-sm" href="{{ survey.public_path }}" target="_blank" rel="noreferrer">打开 {{ icon('external', 12) }}</a>
+        </div>
+      </div>
+      <div class="survey-actions">
+        <a class="btn btn-soft btn-sm" href="/surveys/{{ survey.id }}/edit">{{ icon('settings', 12) }} 编辑</a>
+        <button class="btn btn-soft btn-sm toggle-survey" type="button" data-id="{{ survey.id }}">{{ '关闭' if survey.status == 'open' else '重新开放' }}</button>
+        <a class="btn btn-soft btn-sm" href="/responses">{{ icon('chart', 12) }} 查看响应</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty" style="padding:34px"><div class="empty-icon">{{ icon('play', 26) }}</div><h3>还没有问卷</h3><p>从素材库选择视频/音乐，生成第一份可分享问卷。</p><a class="btn btn-primary" href="/surveys/new">新建问卷</a></div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/surveys.js') }}"></script>
+{% endblock %}

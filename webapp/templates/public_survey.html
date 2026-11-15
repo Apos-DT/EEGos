@@ -1,0 +1,124 @@
+{% from "macros.html" import icon %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ survey.title }} · EEG-EmoStudio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230d3b4f'/%3E%3Cpath d='M10 34h8l4-12 7 24 5-18 4 6h16' fill='none' stroke='%235eead4' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}">
+</head>
+<body class="public-body">
+<div class="public-shell">
+  <header class="public-top">
+    <div class="brand public-brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 44 44" width="36" height="36" aria-hidden="true"><rect width="44" height="44" rx="12" fill="rgba(255,255,255,.08)"/><path d="M7 24h6l3-9 5 18 4-14 3 5h9" fill="none" stroke="#6ff2db" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-copy"><strong>EEG-EmoStudio</strong><span>QUESTIONNAIRE</span></span>
+    </div>
+    <span class="public-badge">本地研究问卷</span>
+  </header>
+
+  <section class="public-welcome" id="publicWelcome">
+    <span class="badge badge-blue">知情同意</span>
+    <h1>{{ survey.title }}</h1>
+    <p class="public-desc">{{ survey.description or '请按顺序观看/收听每个素材，并在结束后填写感受。' }}</p>
+    <div class="public-facts">
+      <span>{{ survey.materials|length }} 个素材</span>
+      <span>{{ survey.materials|selectattr('modality','equalto','video')|list|length }} 视频</span>
+      <span>{{ survey.materials|selectattr('modality','equalto','audio')|list|length }} 音乐</span>
+    </div>
+
+    {% if survey.status != 'open' %}
+    <div class="public-closed"><strong>问卷已关闭</strong><p>请联系实验人员获取新的链接。</p></div>
+    {% else %}
+    <form id="publicStartForm" class="public-form" data-require-code="{{ '1' if survey.settings.get('require_code', True) else '0' }}">
+      <div class="form-grid compact">
+        <div class="field">
+          <label for="participantCode">被试编号 <span class="req">*</span></label>
+          <input id="participantCode" name="participant_code" required maxlength="64" placeholder="例如 P01 / S01" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="participantAge">年龄</label>
+          <input id="participantAge" name="age" type="number" min="10" max="100" placeholder="可选">
+        </div>
+        <div class="field">
+          <label for="participantGender">性别</label>
+          <select id="participantGender" name="gender">
+            <option value="">不填写</option><option value="女">女</option><option value="男">男</option><option value="其他">其他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sleepHours">昨晚睡眠（小时）</label>
+          <input id="sleepHours" name="sleep_hours" type="number" min="0" max="24" step="0.5" placeholder="可选">
+        </div>
+        <div class="field">
+          <label for="fatigue">当前疲劳（1–5）</label>
+          <select id="fatigue" name="fatigue"><option value="">不填写</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select>
+        </div>
+        <div class="field">
+          <label for="mood">当前心情（1–9）</label>
+          <input id="mood" name="mood" type="number" min="1" max="9" placeholder="1 低落 — 9 愉快">
+        </div>
+      </div>
+      <label class="checkline"><input type="checkbox" id="publicConsent" checked><span>我已了解实验流程，并同意参加本次问卷。</span></label>
+      <button class="btn btn-primary btn-lg" type="submit" id="publicStart">开始问卷 {{ icon('arrow', 15) }}</button>
+      <div class="form-error" id="publicError" hidden></div>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="public-runner" id="publicRunner" hidden>
+    <div class="public-progress"><div><span id="publicProgressText">1 / {{ survey.materials|length }}</span><small>{{ survey.title }}</small></div><div class="progress-track"><span id="publicProgressBar" style="width:0%"></span></div></div>
+    <div class="public-stage" id="publicStage">
+      <video id="publicVideo" controls playsinline preload="metadata" hidden></video>
+      <audio id="publicAudio" controls preload="metadata" hidden></audio>
+      <div class="public-media-hint"><span id="publicMediaHint">请完整观看后填写问卷</span><span class="mono" id="publicClock">00:00</span></div>
+      <button class="btn btn-primary btn-block" type="button" id="publicDone">我看完了，填写问卷 {{ icon('arrow', 15) }}</button>
+    </div>
+    <div class="question-card public-question" id="publicQuestion" hidden>
+      <div class="question-head"><div><span class="badge badge-blue">问卷</span><h3>看完这个素材，你感觉如何？</h3></div><span class="mono" id="publicStimulus"></span></div>
+      <form id="publicResponseForm">
+        <div class="rating-block">
+          <div class="rating-label"><span>效价 Valence</span><strong id="publicValenceValue">5</strong></div>
+          <input type="range" id="publicValence" name="valence" min="1" max="9" step="1" value="5" aria-label="效价评分">
+          <div class="rating-ends"><span>非常不愉快</span><span>非常愉快</span></div>
+          <div class="rating-scale" data-scale="publicValence" role="group" aria-label="效价快速选择">{% for n in range(1,10) %}<button type="button" data-value="{{ n }}">{{ n }}</button>{% endfor %}</div>
+        </div>
+        <div class="rating-block">
+          <div class="rating-label"><span>唤醒 Arousal</span><strong id="publicArousalValue">5</strong></div>
+          <input type="range" id="publicArousal" name="arousal" min="1" max="9" step="1" value="5" aria-label="唤醒评分">
+          <div class="rating-ends"><span>非常平静</span><span>非常激动</span></div>
+          <div class="rating-scale" data-scale="publicArousal" role="group" aria-label="唤醒快速选择">{% for n in range(1,10) %}<button type="button" data-value="{{ n }}">{{ n }}</button>{% endfor %}</div>
+        </div>
+        <div class="field">
+          <label>主导情绪 <span class="req">*</span></label>
+          <div class="emotion-grid">
+            <label class="emotion-option"><input type="radio" name="discrete" value="平静" required><span>平静 / 中性</span></label>
+            <label class="emotion-option"><input type="radio" name="discrete" value="悲伤" required><span>悲伤</span></label>
+            <label class="emotion-option"><input type="radio" name="discrete" value="恐惧" required><span>恐惧</span></label>
+            <label class="emotion-option"><input type="radio" name="discrete" value="快乐" required><span>快乐</span></label>
+            <label class="emotion-option"><input type="radio" name="discrete" value="其他" required><span>其他 / 说不清</span></label>
+          </div>
+        </div>
+        <div class="form-grid compact">
+          <div class="field"><label for="publicIntensity">情绪强度（1–5）</label><select id="publicIntensity" name="intensity"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="field"><label for="publicFamiliarity">熟悉度（1–5）</label><select id="publicFamiliarity" name="familiarity"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option></select></div>
+        </div>
+        <label class="checkline"><input type="checkbox" id="publicPrevious"> 之前看过/听过这个素材</label>
+        <button class="btn btn-primary btn-block" type="submit" id="publicSubmit">提交并继续 {{ icon('arrow', 15) }}</button>
+        <div class="form-error" id="publicResponseError" hidden></div>
+      </form>
+    </div>
+    <div class="completion-card" id="publicComplete" hidden><div class="completion-icon">{{ icon('check', 30) }}</div><h3>问卷完成</h3><p>感谢参与，你的回答已保存。</p></div>
+  </section>
+
+  <footer class="public-footer">EEG-EmoStudio · 数据仅用于本研究 · 本地保存</footer>
+</div>
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+<script src="{{ url_for('static', path='js/app.js') }}"></script>
+<script>window.__SURVEY_TOKEN__ = {{ token|tojson }};</script>
+<script src="{{ url_for('static', path='js/public_survey.js') }}"></script>
+</body>
+</html>

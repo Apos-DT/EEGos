@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge, grade %}
+{% block title %}历史预评价 · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/stimuli">{{ icon('sliders', 15) }} 返回刺激库</a>
+{% endblock %}
+
+{% block content %}
+<section class="warning-strip">
+  <div class="warning-icon">{{ icon('info', 18) }}</div>
+  <div>
+    <strong>这是一次性的数据集制备记录，不属于日常实验流程</strong>
+    <p>240 条材料的预评价、2,356 份问卷与质量审计已经归档。日常实验只需要使用“刺激库”里的 80 条正式材料。</p>
+  </div>
+</section>
+
+<div class="stats-grid mt-4">
+  <article class="stat-card" style="--tint:#eaf0ff;--tone:#2f6fed">
+    <div class="stat-top"><span>候选材料</span><span class="stat-icon">{{ icon('layers', 16) }}</span></div>
+    <div class="stat-value">240<small>条</small></div>
+    <div class="stat-foot"><span>视频 120</span><span>·</span><span>音乐 120</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#e9fbf7;--tone:#0c7368">
+    <div class="stat-top"><span>预评价问卷</span><span class="stat-icon">{{ icon('file', 16) }}</span></div>
+    <div class="stat-value">{{ data.summary.surveys.video.raw_rows + data.summary.surveys.audio.raw_rows if data.summary.surveys else 2356 }}<small>份</small></div>
+    <div class="stat-foot"><span>视频 + 音乐</span><span>·</span><span>去重后 2,299</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#fff4e2;--tone:#b45309">
+    <div class="stat-top"><span>问题刺激</span><span class="stat-icon">{{ icon('alert', 16) }}</span></div>
+    <div class="stat-value">{{ data.problem_stimuli }}<small>条</small></div>
+    <div class="stat-foot"><span>视频 22</span><span>·</span><span>音乐 29</span></div>
+  </article>
+  <article class="stat-card" style="--tint:#f4f0ff;--tone:#6941c6">
+    <div class="stat-top"><span>正式选材</span><span class="stat-icon">{{ icon('check', 16) }}</span></div>
+    <div class="stat-value">80<small>条</small></div>
+    <div class="stat-foot"><span>S {{ data.grade_counts.S }} · A {{ data.grade_counts.A }} · B {{ data.grade_counts.B }}</span></div>
+  </article>
+</div>
+
+<div class="layout-2 mt-4">
+  <section class="panel">
+    <div class="panel-head">
+      <div><h2>选材结果</h2><p>只读归档；需要调整时重新运行数据制备流程，而不是在实验前反复改规则。</p></div>
+      <a class="panel-link" href="/stimuli">去刺激库 {{ icon('arrow', 13) }}</a>
+    </div>
+    <div class="panel-body">
+      <div class="grade-summary">
+        {% for g in ['S','A','B','C','D'] %}
+        <div class="grade-summary-item">{{ grade(g) }}<strong>{{ data.grade_counts[g] }}</strong><small>条</small></div>
+        {% endfor %}
+      </div>
+      <div class="archive-lines">
+        <div><span>视频材料</span><strong>120 条，选 40 条</strong></div>
+        <div><span>音乐材料</span><strong>120 条，选 40 条</strong></div>
+        <div><span>分层方式</span><strong>2 模态 × 4 象限 × 10 条</strong></div>
+        <div><span>质量问题</span><strong>视频 22 · 音乐 29</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>证据下载</h2><p>给论文/答辩用的原始审计文件</p></div><span class="badge badge-gray">只读</span></div>
+    <div class="download-list">
+      {% for item in data.downloads %}
+      <a class="download-row" href="/files/audit/{{ item.name }}">{{ icon('download', 14) }}<span>{{ item.label }}</span><small>{{ item.name }}</small></a>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="legacy-note">
+  <div class="legacy-icon">{{ icon('shield', 18) }}</div>
+  <div><strong>为什么不再放在主导航</strong><p>预评价是数据集构建阶段的一次性工作；日常实验只需要播放正式材料、收集评分、处理 EEG 和训练模型。</p></div>
+</div>
+{% endblock %}

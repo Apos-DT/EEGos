@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge, grade, job_console %}
+
+{% block actions %}
+  <a class="btn btn-soft" href="/files/selection/selected_materials.csv">{{ icon('download', 15) }} 选材 CSV</a>
+  <button class="btn btn-primary" id="runSelection">{{ icon('spark', 15) }} 生成选材清单</button>
+{% endblock %}
+
+{% block content %}
+<div class="layout-2-wide">
+  <section class="panel">
+    <div class="panel-head">
+      <div><h2 class="panel-title">选材规则</h2><p class="panel-sub">先按“模态 × 四象限”分层，再按等级与质量分取前 N；不跨象限比较。</p></div>
+      <span class="badge badge-teal">可复现</span>
+    </div>
+    <div class="panel-body">
+      <form id="selectionForm" class="form-grid">
+        <div class="field">
+          <label for="perClass">每层选取数量</label>
+          <div class="input-group"><input class="input" id="perClass" type="number" min="1" max="50" value="{{ data.summary.per_class or 10 }}"><span class="input-suffix">条 / 层</span></div>
+          <div class="hint">2 模态 × 4 象限 × N；默认 10 → 80 条。</div>
+        </div>
+        <div class="field">
+          <label>最低质量等级</label>
+          <div class="segmented" id="minGrade">
+            {% for g in ['S','A','B','C','D'] %}
+            <label><input type="radio" name="min_grade" value="{{ g }}" {% if (data.summary.min_grade or 'D') == g %}checked{% endif %}><span>{{ g }}</span></label>
+            {% endfor %}
+          </div>
+          <div class="hint">建议 B 及以上；D 仅用于“低质量对照”。</div>
+        </div>
+        <div class="field full">
+          <label>参与选材的模态</label>
+          <div class="flex gap-4" style="padding:4px 0 2px">
+            <label class="check-row"><input type="checkbox" name="modality" value="video" checked> 视频</label>
+            <label class="check-row"><input type="checkbox" name="modality" value="audio" checked> 音乐</label>
+            <span class="muted small">同一模态内独立分层；不会把视频分数和音乐分数直接比较。</span>
+          </div>
+        </div>
+        <div class="form-actions full">
+          <button class="btn btn-primary" type="submit" id="selectionSubmit">{{ icon('play', 15) }} 运行选材</button>
+          <span class="muted small">输出：selected_materials.csv / summary.json / report.md</span>
+        </div>
+      </form>
+      <div class="rule-card mt-4">
+        <strong>为什么不是“总榜前 80”？</strong>
+        <p>HVHA 往往分数最高，直接取总榜会让四象限失衡。系统按模态×象限分层，保证每个情绪条件都有足够 Trial，同时优先 S/A 级材料。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">当前选材</h2><p class="panel-sub">最近一次成功运行的冻结结果</p></div>{% if data.available %}<span class="badge badge-green">已生成</span>{% endif %}</div>
+      <div class="panel-body">
+        {% if data.available %}
+        <div class="stats-grid" style="grid-template-columns:repeat(2,1fr);margin-top:0">
+          <div class="stat-card" style="padding:13px;box-shadow:none"><div class="stat-top"><span>总材料</span>{{ icon('layers', 15) }}</div><div class="stat-value">{{ data.total }}</div><div class="stat-foot">四象限 × 两模态</div></div>
+          <div class="stat-card" style="padding:13px;box-shadow:none"><div class="stat-top"><span>S / A / B</span>{{ icon('shield', 15) }}</div><div class="stat-value" style="font-size:20px">{{ data.grade_counts.S }} / {{ data.grade_counts.A }} / {{ data.grade_counts.B }}</div><div class="stat-foot">无 C / D</div></div>
+        </div>
+        <div class="mini-grade-grid mt-3">
+          {% for g in ['S','A','B','C','D'] %}
+          <div class="mini-grade">{{ grade(g) }}<strong>{{ data.grade_counts[g] }}</strong><small>条</small></div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty" style="padding:24px 10px"><div class="empty-icon">{{ icon('sliders', 24) }}</div><h3>还没有选材结果</h3><p>使用左侧规则生成第一份正式实验材料清单。</p></div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">可下载证据</h2><p class="panel-sub">选材清单与报告</p></div></div>
+      <div class="panel-body"><div class="download-row">
+        {% for item in data.downloads %}
+        <a class="download-chip" href="/files/selection/{{ item.name }}">{{ icon('download', 13) }} {{ item.label }}</a>
+        {% endfor %}
+      </div></div>
+    </section>
+  </div>
+</div>
+
+{% if data.available %}
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><div><h2 class="panel-title">分层结果</h2><p class="panel-sub">每个模态×象限独立排序；等级优先于分数</p></div><span class="badge badge-neutral">{{ data.groups|length }} 层</span></div>
+  <div class="panel-body"><div class="group-grid">
+    {% for group in data.groups %}
+    <div class="group-card">
+      <div class="k">{{ '视频' if group.key.startswith('video') else '音乐' }} · {{ group.key.split('/')[1] }}</div>
+      <div class="v">{{ group.n }}<small style="font-size:10px;color:#9aa8b8"> 条</small></div>
+      <div class="d">均分 {{ group.mean }} · 最低 {{ grade(group.min_grade) }}</div>
+    </div>
+    {% endfor %}
+  </div></div>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <div class="table-tools">
+    <div class="search-box">{{ icon('search', 14) }}<input id="selectionSearch" placeholder="搜索刺激 / 象限 / 等级…"></div>
+    <div class="chips">
+      <button class="chip active" data-filter="all">全部</button>
+      <button class="chip" data-filter="视频">视频</button>
+      <button class="chip" data-filter="音乐">音乐</button>
+    </div>
+    <span class="table-count" id="selectionCount">{{ data.total }} 条</span>
+  </div>
+  <div class="table-wrap scroll">
+    <table class="data" id="selectionTable">
+      <thead><tr><th class="num">#</th><th>模态</th><th>刺激</th><th>象限</th><th class="num">质量分</th><th>等级</th><th class="num">类内排名</th><th>主要问题</th><th>选择理由</th></tr></thead>
+      <tbody>
+      {% for row in data.rows %}
+        <tr data-search="{{ row.modality }} {{ row.stimulus_id }} {{ row.category }} {{ row.grade }} {{ row.selection_reason }}" data-group="{{ '视频' if row.modality == 'video' else '音乐' }}">
+          <td class="num muted">{{ row.selection_rank }}</td>
+          <td><span class="badge {{ 'badge-teal' if row.modality == 'video' else 'badge-blue' }}">{{ '视频' if row.modality == 'video' else '音乐' }}</span></td>
+          <td class="strong">{{ row.stimulus_id }}</td>
+          <td><span class="badge badge-neutral">{{ row.category }}</span></td>
+          <td class="num"><div class="score-cell"><div class="score-track"><span style="width:{{ row.quality_score or 0 }}%"></span></div><span class="score-val">{{ '%.1f'|format(row.quality_score or 0) }}</span></div></td>
+          <td>{{ grade(row.grade) }}</td>
+          <td class="num">{{ row.category_rank }}</td>
+          <td class="muted">{{ row.main_issue or '无' }}</td>
+          <td class="muted">{{ row.selection_reason }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{{ job_console('selectionConsole', '选材任务', true) }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/selection.js') }}"></script>
+{% endblock %}

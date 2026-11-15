@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+
+{% block actions %}
+  <button class="btn btn-soft" id="healthCheck">{{ icon('refresh', 15) }} 健康检查</button>
+  <a class="btn btn-primary" href="/api/swagger" target="_blank">{{ icon('external', 15) }} API 文档</a>
+{% endblock %}
+
+{% block content %}
+<div class="sys-grid">
+  <div class="sys-card"><div class="k">Application</div><div class="v">{{ info.app_version }}</div><div class="d">EEG-EmoStudio 本地研究控制台</div></div>
+  <div class="sys-card"><div class="k">Python</div><div class="v">{{ info.python }}</div><div class="d">{{ info.platform }}</div></div>
+  <div class="sys-card"><div class="k">Data assets</div><div class="v">{{ info.datasets }} / {{ info.raws }}</div><div class="d">特征集 / 原始数据</div></div>
+  <div class="sys-card"><div class="k">Experiments</div><div class="v">{{ info.experiments }}</div><div class="d">运行记录与报告</div></div>
+  <div class="sys-card"><div class="k">Documents</div><div class="v">{{ info.docs }}</div><div class="d">DOCX + PDF 支撑材料</div></div>
+  <div class="sys-card"><div class="k">EEG files</div><div class="v">{{ info.eeg_files }}</div><div class="d">SEED-IV MAT / EEGLAB .set</div></div>
+</div>
+
+<div class="layout-2">
+  <section class="panel">
+    <div class="panel-head"><div><h2 class="panel-title">运行环境</h2><p class="panel-sub">本机/局域网；无云依赖、无外部数据库</p></div><span class="badge badge-green" id="healthBadge">API OK</span></div>
+    <div class="panel-body">
+      <dl class="kv">
+        <dt>研究者</dt><dd>赵祥生 · 软件工程</dd>
+        <dt>工作目录</dt><dd class="mono">{{ info.cwd }}</dd>
+        <dt>审计状态</dt><dd>{% if info.audit_available %}<span class="badge badge-green">已生成</span> <span class="muted small">{{ info.audit_generated_at[:19] }}</span>{% else %}<span class="badge badge-amber">未生成</span>{% endif %}</dd>
+        <dt>选材状态</dt><dd>{% if info.selection_available %}<span class="badge badge-green">已生成</span>{% else %}<span class="badge badge-neutral">未生成</span>{% endif %}</dd>
+        <dt>数据目录</dt><dd class="mono">data/raw → data/processed</dd>
+        <dt>实验目录</dt><dd class="mono">artifacts/experiments</dd>
+        <dt>任务目录</dt><dd class="mono">artifacts/web_jobs</dd>
+        <dt>健康接口</dt><dd class="mono">GET /api/health</dd>
+      </dl>
+      <div class="form-note mt-4">{{ icon('lock', 14) }} <span>服务默认仅监听 127.0.0.1；如需局域网访问，请先确认数据授权与访问控制，不要直接暴露到公网。</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2 class="panel-title">数据边界</h2><p class="panel-sub">答辩时必须主动说明</p></div></div>
+    <div class="panel-body">
+      <div class="alert-list">
+        {% if info.eeg_files == 0 %}
+        <div class="alert-item"><span class="alert-icon danger">{{ icon('alert', 14) }}</span><div><div class="alert-title">原始 EEG 尚未接入</div><div class="alert-detail">真实跨被试性能、通道质量与伪迹统计均为空。</div></div><span class="badge badge-red">阻断</span></div>
+        {% else %}
+        <div class="alert-item"><span class="alert-icon info">{{ icon('check', 14) }}</span><div><div class="alert-title">SEED-IV 已接入</div><div class="alert-detail">45 个原始 MAT / 45 个官方特征 MAT；15 被试 × 3 sessions × 24 trials。</div></div><span class="badge badge-green">已接入</span></div>
+        {% endif %}
+        <div class="alert-item"><span class="alert-icon warning">{{ icon('alert', 14) }}</span><div><div class="alert-title">合成 demo ≠ 科研结果</div><div class="alert-detail">demo 只验证软件链路；论文性能表必须来自真实 raw.npz。</div></div><span class="badge badge-amber">边界</span></div>
+        <div class="alert-item"><span class="alert-icon info">{{ icon('info', 14) }}</span><div><div class="alert-title">质量分不是标签真值</div><div class="alert-detail">质量分衡量材料可用性，不能替代被试自评。</div></div><span class="badge badge-blue">口径</span></div>
+        <div class="alert-item"><span class="alert-icon info">{{ icon('info', 14) }}</span><div><div class="alert-title">音乐片段 60 s 待统一</div><div class="alert-detail">26/120 条偏离 60±15 s，正式实验前必须冻结协议。</div></div><span class="badge badge-blue">待办</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="layout-2" style="margin-top:16px">
+  <section class="panel">
+    <div class="panel-head"><div><h2 class="panel-title">API 端点</h2><p class="panel-sub">页面与 API 共用同一套数据服务</p></div><span class="badge badge-neutral">FastAPI</span></div>
+    <div class="panel-body">
+      <div class="endpoint-list">
+        <div class="endpoint"><span class="method get">GET</span><code>/api/overview</code><small>三域工作台</small></div>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/surveys</code><small>问卷方案</small></div>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/media</code><small>素材库</small></div>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/audit</code><small>审计与质量</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/audit/run</code><small>启动审计任务</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/selection/run</code><small>启动选材任务</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/raw/upload</code><small>上传 raw.npz</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/features/run</code><small>提取 DE 特征</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/experiment/sessions</code><small>创建实验会话</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/eeg/process</code><small>清洗 EEGLAB 数据</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/datasets/merge</code><small>合并多被试特征集</small></div>
+        <div class="endpoint"><span class="method post">POST</span><code>/api/train/run</code><small>启动 LOSO 训练</small></div>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/jobs/{id}</code><small>轮询任务日志</small></div>
+        <div class="endpoint"><span class="method get">GET</span><code>/api/experiments</code><small>实验列表</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2 class="panel-title">最近任务</h2><p class="panel-sub">当前服务进程内的任务；已写入 artifacts/web_jobs</p></div></div>
+    {% if jobs %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>任务</th><th>状态</th><th>提交</th><th>结果</th></tr></thead>
+        <tbody>
+        {% for job in jobs[:8] %}
+        <tr><td class="strong">{{ job.title }}</td><td><span class="badge {{ 'badge-green' if job.status == 'success' else 'badge-red' if job.status == 'failed' else 'badge-blue' }}">{{ job.status }}</span></td><td class="muted">{{ job.created_at[5:16] }}</td><td class="muted">{{ (job.error or job.result.get('run_id') or job.result.get('output') or '—')[:36] }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty" style="padding:26px"><p>还没有任务。运行一次审计或训练后，这里会出现记录。</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById("healthCheck")?.addEventListener("click", async () => {
+    const badge = document.getElementById("healthBadge");
+    try {
+      const response = await fetch("/api/health");
+      const data = await response.json();
+      badge.textContent = data.status === "ok" ? "API OK" : "API ERROR";
+      badge.className = `badge ${data.status === "ok" ? "badge-green" : "badge-red"}`;
+      EEG.toast(`API ${data.status} · v${data.version}`, data.status === "ok" ? "success" : "error");
+    } catch (error) {
+      badge.textContent = "API OFFLINE";
+      badge.className = "badge badge-red";
+      EEG.toast("API 不可达", "error");
+    }
+  });
+</script>
+{% endblock %}

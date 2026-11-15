@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge, job_console %}
+
+{% block actions %}
+  <a class="btn btn-soft" href="#uploadCard">{{ icon('upload', 15) }} 上传 raw.npz</a>
+  <a class="btn btn-primary" href="/training">{{ icon('cpu', 15) }} 去训练</a>
+{% endblock %}
+
+{% block content %}
+<div class="layout-2-wide">
+  <div class="stack">
+    <section class="panel" id="uploadCard">
+      <div class="panel-head"><div><h2 class="panel-title">接入原始数据</h2><p class="panel-sub">上传 <code class="mono">raw.npz</code>：x / y / subjects / fs；文件只保存在本机。</p></div><span class="badge badge-neutral">≤ 300 MB</span></div>
+      <div class="panel-body">
+        <div class="dropzone" id="dropzone" role="button" tabindex="0">
+          {{ icon('upload', 28) }}
+          <h3>拖拽 raw.npz 到这里，或点击选择文件</h3>
+          <p>x: (trials, channels, samples) · y: 0..K-1 · subjects: S01… · fs: Hz</p>
+          <input type="file" id="fileInput" accept=".npz" hidden>
+        </div>
+        <div class="upload-progress" id="uploadProgress"><span></span></div>
+        <div class="form-note mt-3">{{ icon('info', 14) }} <span>没有现成数据？可先使用右下角的“合成原始示例”跑通特征流水线，或从 SEED/DEAP 转换后上传。</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">提取 DE 特征</h2><p class="panel-sub">带通 0.1–70 Hz、50 Hz 陷波、5 频带、1 s 窗</p></div><span class="badge badge-teal">CPU</span></div>
+      <div class="panel-body">
+        <form id="featureForm" class="form-grid">
+          <div class="field full">
+            <label for="rawSelect">原始数据</label>
+            <select class="select" id="rawSelect" name="raw_id" required>
+              <option value="">选择 raw.npz…</option>
+              {% for raw in raws %}
+              <option value="{{ raw.id }}">{{ raw.name }} · {{ raw.n_trials }} trial / {{ raw.n_channels }} ch {% if raw.kind == 'demo' %}（合成示例）{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field"><label for="sourceFs">原始采样率</label><div class="input-group"><input class="input" id="sourceFs" type="number" step="1" placeholder="文件内 fs"><span class="input-suffix">Hz</span></div><div class="hint">留空时读取文件内的 fs。</div></div>
+          <div class="field"><label for="targetFs">目标采样率</label><div class="input-group"><input class="input" id="targetFs" type="number" step="1" value="200"><span class="input-suffix">Hz</span></div></div>
+          <div class="field"><label for="windowSize">窗口长度</label><div class="input-group"><input class="input" id="windowSize" type="number" step="0.1" value="1.0"><span class="input-suffix">s</span></div></div>
+          <div class="field"><label for="stepSize">步长</label><div class="input-group"><input class="input" id="stepSize" type="number" step="0.1" value="1.0"><span class="input-suffix">s</span></div></div>
+          <div class="field"><label for="aggregate">窗口聚合</label><select class="select" id="aggregate"><option value="mean">mean（推荐）</option><option value="std">std</option><option value="concat">concat</option></select></div>
+          <div class="field"><label for="notch">工频陷波</label><div class="input-group"><input class="input" id="notch" type="number" step="1" value="50"><span class="input-suffix">Hz</span></div></div>
+          <div class="form-actions full"><button class="btn btn-primary" type="submit" id="featureSubmit">{{ icon('play', 15) }} 提取特征</button><span class="muted small">输出 features.npz + manifest + build.json</span></div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">原始数据</h2><p class="panel-sub">只读；上传后先做质量检查再提特征</p></div><span class="badge badge-neutral">{{ raws|length }} 个文件</span></div>
+      <div class="panel-body">
+        {% if raws %}
+        {% for raw in raws %}
+        <div class="raw-row">
+          <div><div class="name">{{ raw.name }} {% if raw.kind == 'demo' %}<span class="badge badge-amber">合成</span>{% endif %}</div>
+            <div class="meta">{{ raw.n_trials }} trial · {{ raw.n_channels }} ch · {{ raw.n_samples }} points · {{ raw.n_subjects }} 被试{% if raw.fs %} · {{ raw.fs|int }} Hz{% endif %}</div>
+          </div>
+          <button class="btn btn-soft btn-sm use-raw" data-raw="{{ raw.id }}">用它提特征 {{ icon('arrow', 12) }}</button>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty" style="padding:22px 8px"><div class="empty-icon">{{ icon('database', 22) }}</div><h3>还没有原始数据</h3><p>上传 raw.npz 后，这里会出现文件列表。</p></div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">可训练特征集</h2><p class="panel-sub">manifest 记录形状、类别分布、被试分布与 SHA-256</p></div><div class="dataset-merge"><span id="mergeCount">已选 0 个</span><button class="btn btn-soft btn-sm" type="button" id="mergeDatasets" disabled>{{ icon('layers', 13) }} 合并所选</button></div></div>
+      <div class="panel-body">
+        {% if datasets %}
+        <div class="dataset-grid" style="grid-template-columns:1fr">
+          {% for ds in datasets %}
+          <article class="dataset-card">
+            <div class="dataset-top">
+              <label class="dataset-pick" title="选择用于合并"><input type="checkbox" class="dataset-check" data-id="{{ ds.id }}"><span></span></label>
+              <div><div class="dataset-name">{{ ds.file }}</div><div class="muted small" style="margin-top:3px">{{ ds.path }}</div></div>
+              {% if ds.kind == 'demo' %}<span class="badge badge-amber">合成</span>{% elif ds.source == 'SEED-IV' %}<span class="badge badge-blue">SEED-IV</span>{% else %}<span class="badge badge-green">可训练</span>{% endif %}
+            </div>
+            <div class="dataset-meta">
+              <span>{{ ds.n_samples }} 样本</span><span>{{ ds.n_channels }} 通道</span><span>{{ ds.n_features }} 特征</span><span>{{ ds.n_subjects }} 被试</span><span>{{ ds.n_classes }} 类</span>
+              {% if ds.n_trials %}<span>{{ ds.n_trials }} trials</span>{% endif %}{% if ds.window_seconds %}<span>{{ ds.window_seconds }} s 窗</span>{% endif %}
+            </div>
+            <div class="dataset-foot">
+              <small>{% if ds.has_manifest %}manifest ✓{% else %}无 manifest{% endif %} · {{ ds.size_mb }} MB</small>
+              <a class="btn btn-subtle btn-sm" href="/training?dataset={{ ds.id }}">用于训练 {{ icon('arrow', 12) }}</a>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty" style="padding:26px 8px"><div class="empty-icon">{{ icon('layers', 24) }}</div><h3>还没有特征集</h3><p>上传 raw.npz 并提取 DE 特征，或使用合成示例。</p></div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">数据契约</h2><p class="panel-sub">论文附录可直接引用</p></div><span class="badge badge-violet">v1.0</span></div>
+      <div class="panel-body">
+        <div class="kv">
+          <dt>x</dt><dd class="mono">(trials, channels, samples)<br><span class="muted small">float32 · µV</span></dd>
+          <dt>y</dt><dd class="mono">(trials,)<br><span class="muted small">int64 · 0..K-1</span></dd>
+          <dt>subjects</dt><dd class="mono">(trials,) str S01…</dd>
+          <dt>fs</dt><dd class="mono">scalar Hz</dd>
+          <dt>class_names</dt><dd class="mono">可选，长度 K</dd>
+          <dt>特征输出</dt><dd class="mono">(samples, channels, 5)</dd>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+{{ job_console('featureConsole', '特征构建任务', true) }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/datasets.js') }}"></script>
+{% endblock %}

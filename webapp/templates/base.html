@@ -1,0 +1,111 @@
+{% from "macros.html" import icon, badge %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{% block title %}{{ page_title }} · {{ app_name }}{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230d3b4f'/%3E%3Cpath d='M10 34h8l4-12 7 24 5-18 4 6h16' fill='none' stroke='%235eead4' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}">
+</head>
+<body data-page="{{ page }}">
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/" aria-label="返回工作台">
+      <span class="brand-mark">
+        <svg viewBox="0 0 44 44" width="40" height="40" aria-hidden="true">
+          <rect width="44" height="44" rx="12" fill="rgba(255,255,255,.08)"/>
+          <path d="M7 24h6l3-9 5 18 4-14 3 5h9" fill="none" stroke="#6ff2db" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>{{ app_name }}</strong>
+        <span>EEG RESEARCH OS</span>
+      </span>
+    </a>
+
+    <nav class="nav">
+      {% for group in nav_groups %}
+      <div class="nav-label {% if not loop.first %}nav-label-gap{% endif %}">{{ group.label }}</div>
+      {% for item in group['items'] %}
+      <a class="nav-item {% if page == item.key %}active{% endif %}" href="{{ item.href }}">
+        {{ icon(item.icon, 19) }}<span>{{ item.label }}</span>
+        {% if page == item.key %}<i class="nav-dot"></i>{% endif %}
+      </a>
+      {% endfor %}
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="local-card">
+        <div class="local-head">
+          <span class="status-dot"></span>
+          <span>本地研究环境</span>
+          <span class="local-ver">v{{ app_version }}</span>
+        </div>
+        <p>数据不出本机。所有结果保留清单、配置与 SHA-256。</p>
+        <a href="/system" class="local-link">查看系统状态 {{ icon('arrow', 14) }}</a>
+      </div>
+      <div class="sidebar-meta">
+        <span>{{ icon('lock', 13) }} Local only</span>
+        <span>·</span>
+        <span>{{ docs_count }} 份文档</span>
+      </div>
+      <div class="sidebar-meta" style="padding-top:5px">
+        <span>研究者 · 赵祥生</span>
+        <span>·</span>
+        <span>软件工程</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="打开导航">{{ icon('grid', 20) }}</button>
+        <div class="crumbs">
+          <span class="crumb-root">EEG-EmoStudio</span>
+          <span class="crumb-sep">/</span>
+          <span class="crumb-current">{{ page_title }}</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="api-pill" id="apiPill" title="本地 FastAPI 服务">
+          <span class="status-dot"></span>
+          <span>API 在线</span>
+        </div>
+        <span class="topbar-date">{{ now.strftime('%Y-%m-%d') }}</span>
+        <a class="icon-btn" href="/api/swagger" target="_blank" rel="noreferrer" title="打开 API 文档">{{ icon('external', 18) }}</a>
+        <div class="avatar" title="本地研究者">EEG</div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">{{ page_title }}</h1>
+        </div>
+        <div class="page-actions">{% block actions %}{% endblock %}</div>
+      </div>
+
+      {% block content %}{% endblock %}
+
+      <footer class="page-footer">
+        <span>{{ app_name }} · {{ app_subtitle }}</span>
+        <span class="footer-dot">·</span>
+        <span>合成数据仅用于软件验收，不进入科研性能表</span>
+        <a href="/documents">查看研究边界 {{ icon('arrow', 13) }}</a>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<div class="sidebar-scrim" id="sidebarScrim"></div>
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+<script src="{{ url_for('static', path='js/charts.js') }}"></script>
+<script src="{{ url_for('static', path='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

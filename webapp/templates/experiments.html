@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+
+{% block actions %}
+  <a class="btn btn-soft" href="/training">{{ icon('cpu', 15) }} 新建训练</a>
+  <a class="btn btn-primary" href="/api/experiments" target="_blank">{{ icon('external', 15) }} 指标 API</a>
+{% endblock %}
+
+{% block content %}
+<div class="exp-hero">
+  <div class="exp-card">
+    <div class="name">最佳运行</div>
+    <div class="sub">{% if data.best %}{{ data.best.label }}{% else %}暂无实验{% endif %}</div>
+    <div class="score"><strong>{{ data.best.accuracy|pct if data.best else '—' }}</strong><span>Accuracy</span></div>
+    <div class="bar"><span style="width:{{ (data.best.accuracy * 100) if data.best else 0 }}%"></span></div>
+    <div class="meta"><span>Macro-F1 {{ data.best.macro_f1|pct if data.best else '—' }}</span><span>κ {{ '%.3f'|format(data.best.cohen_kappa or 0) if data.best else '—' }}</span></div>
+  </div>
+  <div class="exp-card">
+    <div class="name">实验总数</div>
+    <div class="sub">所有运行均保留指标、配置与检查点</div>
+    <div class="score"><strong>{{ data.count }}</strong><span>runs</span></div>
+    <div class="bar"><span style="width:{{ [data.count * 12, 100]|min }}%"></span></div>
+    <div class="meta"><span>LOSO / 被试依赖</span><span>本地保存</span></div>
+  </div>
+  <div class="exp-card">
+    <div class="name">评估纪律</div>
+    <div class="sub">跨被试结果必须来自折外预测</div>
+    <div class="score"><strong>OOF</strong><span>汇总方式</span></div>
+    <div class="bar"><span style="width:100%"></span></div>
+    <div class="meta"><span>被试隔离</span><span>训练折内标准化</span></div>
+  </div>
+</div>
+
+<div class="layout-2" style="margin-top:16px">
+  <section class="panel">
+    <div class="panel-head"><div><h2 class="panel-title">运行对比</h2><p class="panel-sub">按 Accuracy 降序；不同数据版本不应直接混合比较</p></div></div>
+    <div id="experimentChart" class="chart-wrap"></div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><div><h2 class="panel-title">比较前先确认</h2><p class="panel-sub">论文表格的 4 个最低要求</p></div></div>
+    <div class="panel-body">
+      <div class="pipeline">
+        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一数据版本</div><div class="pipe-detail">manifest / SHA-256 一致</div></div></div>
+        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一划分与种子</div><div class="pipe-detail">folds.json 可复现</div></div></div>
+        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一评估设置</div><div class="pipe-detail">LOSO 不混被试依赖</div></div></div>
+        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一指标口径</div><div class="pipe-detail">OOF + 95% CI + 最差被试</div></div></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <div class="table-tools">
+    <div class="search-box">{{ icon('search', 14) }}<input id="expSearch" placeholder="搜索运行 / 模型…"></div>
+    <div class="chips">
+      <button class="chip active" data-filter="all">全部</button>
+      <button class="chip" data-filter="loso">LOSO</button>
+      <button class="chip" data-filter="subject-dependent">被试依赖</button>
+    </div>
+    <span class="table-count" id="expCount">{{ data.count }} 次</span>
+  </div>
+  {% if data.experiments %}
+  <div class="table-wrap">
+    <table class="data" id="expTable">
+      <thead><tr><th>运行</th><th>模型</th><th>设置</th><th class="num">样本/被试</th><th class="num">Accuracy</th><th class="num">Balanced</th><th class="num">Macro-F1</th><th class="num">κ</th><th>时间</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for run in data.experiments %}
+        <tr data-search="{{ run.label }} {{ run.model }} {{ run.setting }}" data-group="{{ run.setting }}">
+          <td class="strong"><span class="run-dot {{ 'demo' if run.is_demo else '' }}"></span>{{ run.label }}{% if run.is_demo %} <span class="badge badge-amber">验收</span>{% endif %}</td>
+          <td>{{ run.model }}</td>
+          <td><span class="badge {{ 'badge-blue' if run.setting == 'loso' else 'badge-violet' }}">{{ run.setting_label }}</span></td>
+          <td class="num">{{ run.n_samples }} / {{ run.n_subjects }}</td>
+          <td class="num strong">{{ run.accuracy|pct }}</td>
+          <td class="num">{{ run.balanced_accuracy|pct }}</td>
+          <td class="num">{{ run.macro_f1|pct }}</td>
+          <td class="num">{{ '%.3f'|format(run.cohen_kappa or 0) }}</td>
+          <td class="muted">{{ (run.created_at or '')[:16] }}</td>
+          <td>
+            <div class="flex gap-1">
+              {% if run.report_url %}<a class="btn btn-soft btn-sm" href="{{ run.report_url }}" target="_blank">报告</a>{% endif %}
+              <a class="btn btn-soft btn-sm" href="/api/experiments/{{ run.id }}" target="_blank">JSON</a>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><div class="empty-icon">{{ icon('activity', 26) }}</div><h3>还没有实验记录</h3><p>先在训练页跑一次合成数据 LOSO，验证软件链路。</p><a class="btn btn-primary btn-sm" href="/training">去训练 {{ icon('arrow', 14) }}</a></div>
+  {% endif %}
+</section>
+
+<script type="application/json" id="experimentData">{{ data.experiments|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/experiments.js') }}"></script>
+{% endblock %}

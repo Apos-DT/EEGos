@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge, job_console %}
+
+{% block actions %}
+  <a class="btn btn-soft" href="/experiments">{{ icon('activity', 15) }} 实验记录</a>
+  <button class="btn btn-primary" id="topTrain">{{ icon('play', 15) }} 开始训练</button>
+{% endblock %}
+
+{% block content %}
+<div class="training-layout">
+  <section class="panel training-form">
+    <div class="panel-head"><div><h2 class="panel-title">训练配置</h2><p class="panel-sub">固定种子、训练折内标准化、被试隔离</p></div><span class="badge badge-teal">LOSO</span></div>
+    <div class="panel-body">
+      <form id="trainingForm">
+        <div class="field mb-3">
+          <label for="datasetSelect">特征数据集</label>
+          <select class="select" id="datasetSelect" required>
+            {% for ds in datasets %}
+            <option value="{{ ds.id }}" data-samples="{{ ds.n_samples }}" data-source="{{ ds.source }}" {% if ds.id == selected_dataset %}selected{% endif %}>{{ ds.file }} · {{ ds.n_samples }}×{{ ds.n_channels }}×{{ ds.n_features }}{% if ds.source %} · {{ ds.source }}{% endif %}</option>
+            {% endfor %}
+          </select>
+          {% if not datasets %}<div class="hint" style="color:#b42318">还没有可训练数据集，请先到“数据集”上传或提取特征。</div>{% endif %}
+          <div class="hint" id="datasetHint">SEED-IV 有 37,575 个窗口；首次跑全量 LOSO 建议先用 MLP / 15 epochs 做基线。</div>
+        </div>
+
+        <div class="field mb-3">
+          <label>模型</label>
+          <div class="model-grid">
+            {% for model in models %}
+            <label class="model-card {% if model.key == 'eegnet' %}disabled{% endif %}" title="{{ model.desc }}">
+              <input type="radio" name="model" value="{{ model.key }}" {% if model.key == 'dualview' %}checked{% endif %} {% if model.key == 'eegnet' %}disabled{% endif %}>
+              <div class="model-inner">
+                <div class="model-head"><span class="model-name">{{ model.name }}</span><span class="model-tag">{{ model.tag }}</span></div>
+                <div class="model-desc">{{ model.desc }}</div>
+                <div class="model-meta">{{ model.meta }}</div>
+              </div>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="field mb-3">
+          <label>评估设置</label>
+          <div class="segmented">
+            <label><input type="radio" name="setting" value="loso" checked><span>跨被试 LOSO</span></label>
+            <label><input type="radio" name="setting" value="subject-dependent"><span>被试依赖</span></label>
+          </div>
+          <div class="hint">跨被试：每折留一名被试；验证集只来自训练被试。被试依赖仅作上界参考。</div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field"><label for="epochs">最大轮数</label><input class="input" id="epochs" type="number" min="1" max="300" value="40"></div>
+          <div class="field"><label for="batchSize">Batch size</label><input class="input" id="batchSize" type="number" min="1" max="512" value="32"></div>
+          <div class="field"><label for="learningRate">学习率</label><input class="input" id="learningRate" type="number" step="0.0001" value="0.001"></div>
+          <div class="field"><label for="seed">随机种子</label><input class="input" id="seed" type="number" min="0" value="42"></div>
+          <div class="field"><label for="hidden">隐层维度</label><input class="input" id="hidden" type="number" min="4" max="256" value="32"></div>
+          <div class="field"><label for="dropout">Dropout</label><input class="input" id="dropout" type="number" step="0.05" min="0" max="0.9" value="0.25"></div>
+          <div class="field"><label for="prototypes">每类原型数</label><input class="input" id="prototypes" type="number" min="1" max="12" value="2"><div class="hint">仅 DualView 生效；K=1 即单原型消融。</div></div>
+          <div class="field"><label for="protoWeight">原型损失权重</label><input class="input" id="protoWeight" type="number" step="0.01" min="0" max="10" value="0.1"></div>
+        </div>
+
+        <div class="form-actions mt-4">
+          <button class="btn btn-primary" type="submit" id="trainSubmit" {% if not datasets %}disabled{% endif %}>{{ icon('play', 15) }} 开始训练</button>
+          <button class="btn btn-soft" type="button" id="quickDemo" {% if not datasets %}disabled{% endif %}>合成数据快跑</button>
+        </div>
+        <div class="form-note mt-3">{{ icon('info', 14) }} <span>训练任务在后台运行，可离开页面；日志与指标会写入 <span class="mono">artifacts/experiments/</span>。</span></div>
+      </form>
+    </div>
+  </section>
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head">
+        <div><h2 class="panel-title">运行状态</h2><p class="panel-sub" id="runHint">等待提交训练任务</p></div>
+        <span class="badge badge-neutral" id="runState">IDLE</span>
+      </div>
+      <div class="panel-body" id="trainingIdle">
+        <div class="pipeline">
+          <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">读取特征与标签</div><div class="pipe-detail">校验形状、类别、被试</div></div><span class="pipe-state">就绪</span></div>
+          <div class="pipe-step"><span class="pipe-node">2</span><div><div class="pipe-label">训练折内标准化</div><div class="pipe-detail">验证/测试只 transform</div></div><span class="pipe-state">运行时</span></div>
+          <div class="pipe-step"><span class="pipe-node">3</span><div><div class="pipe-label">逐折训练 + 早停</div><div class="pipe-detail">恢复最佳验证权重</div></div><span class="pipe-state">运行时</span></div>
+          <div class="pipe-step"><span class="pipe-node">4</span><div><div class="pipe-label">OOF 汇总与报告</div><div class="pipe-detail">ACC / Macro-F1 / κ / CI</div></div><span class="pipe-state">运行时</span></div>
+        </div>
+      </div>
+    </section>
+
+    {{ job_console('trainingConsole', '训练任务', true) }}
+
+    <section class="panel training-result" id="trainingResult">
+      <div class="panel-head">
+        <div><h2 class="panel-title">本次结果</h2><p class="panel-sub">折外预测汇总；合成数据仅用于软件验收</p></div>
+        <a class="btn btn-soft btn-sm" id="openReport" href="#" target="_blank">{{ icon('external', 13) }} 完整报告</a>
+      </div>
+      <div class="panel-body">
+        <div class="metric-strip">
+          <div class="metric-box"><span>Accuracy</span><strong id="metricAcc">—</strong></div>
+          <div class="metric-box"><span>Balanced acc.</span><strong id="metricBal">—</strong></div>
+          <div class="metric-box"><span>Macro-F1</span><strong id="metricF1">—</strong></div>
+          <div class="metric-box"><span>Cohen's κ</span><strong id="metricKappa">—</strong></div>
+        </div>
+        <div class="flex gap-3 mt-3" style="flex-wrap:wrap">
+          <span class="badge badge-blue" id="metricSetting">LOSO</span>
+          <span class="badge badge-neutral" id="metricModel">DualView</span>
+          <span class="badge badge-neutral" id="metricSamples">— 样本</span>
+          <span class="badge badge-green" id="metricCI">95% CI —</span>
+        </div>
+        <div class="figure-grid mt-4">
+          <div class="figure-card"><img id="confusionImage" alt="混淆矩阵"><div class="cap">混淆矩阵 · 行归一化</div></div>
+          <div class="figure-card"><img id="subjectImage" alt="分被试准确率"><div class="cap">分被试准确率 · 随机水平虚线</div></div>
+        </div>
+        <div class="flex gap-2 mt-4" style="flex-wrap:wrap">
+          <a class="btn btn-soft btn-sm" id="metricsLink" href="#" target="_blank">{{ icon('file', 13) }} metrics.json</a>
+          <a class="btn btn-soft btn-sm" href="/experiments">{{ icon('activity', 13) }} 实验记录</a>
+          <span class="muted small" id="resultNote" style="margin-left:auto"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2 class="panel-title">最近实验</h2><p class="panel-sub">同协议下比较，不混合不同数据版本</p></div><a class="panel-link" href="/experiments">全部 {{ icon('arrow', 13) }}</a></div>
+      {% if experiments %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>运行</th><th>模型</th><th class="num">Acc</th><th class="num">F1</th><th class="num">κ</th><th></th></tr></thead>
+          <tbody>
+          {% for run in experiments[:5] %}
+          <tr><td class="strong">{{ run.label }}</td><td>{{ run.model }}</td><td class="num">{{ run.accuracy|pct }}</td><td class="num">{{ run.macro_f1|pct }}</td><td class="num">{{ '%.3f'|format(run.cohen_kappa or 0) }}</td><td class="right">{% if run.report_url %}<a class="mini-link" href="{{ run.report_url }}" target="_blank">报告 {{ icon('external', 11) }}</a>{% endif %}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty" style="padding:24px"><p>还没有实验。提交上方的训练任务，或使用“合成数据快跑”。</p></div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/training.js') }}"></script>
+{% endblock %}

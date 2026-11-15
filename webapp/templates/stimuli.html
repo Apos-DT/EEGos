@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+{% block title %}刺激库 · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/audit">{{ icon('shield', 15) }} 历史预评价</a>
+<a class="btn btn-primary" href="/experiment">{{ icon('play', 15) }} 去实验</a>
+{% endblock %}
+
+{% block content %}
+<section class="stimuli-intro">
+  <div>
+    <h2>正式实验刺激库</h2>
+    <p>这里只保留已经筛选好的 80 条材料。浏览、预览、直接进入实验，不再每次重复跑选材。</p>
+  </div>
+  <div class="stimuli-stats">
+    <div><strong>{{ data.total }}</strong><span>正式材料</span></div>
+    <div><strong>{{ data.video_count }}</strong><span>视频</span></div>
+    <div><strong>{{ data.audio_count }}</strong><span>音乐</span></div>
+    <div><strong>{{ data.available_count }}</strong><span>本地可播放</span></div>
+  </div>
+</section>
+
+<section class="panel mt-4">
+  <div class="panel-head">
+    <div><h2>材料清单</h2><p>按四象限分层；视频 2–5 min，音乐约 60 s。</p></div>
+    <a class="btn btn-soft btn-sm" href="/files/selection/selected_materials.csv">{{ icon('download', 13) }} 导出 CSV</a>
+  </div>
+  <div class="stimuli-toolbar">
+    <div class="search-box">{{ icon('search', 14) }}<input id="stimuliSearch" placeholder="搜索编号 / 标签 / 象限…"></div>
+    <div class="chip-row" id="stimuliModality">
+      <button class="chip active" type="button" data-filter="all">全部</button>
+      <button class="chip" type="button" data-filter="video">视频</button>
+      <button class="chip" type="button" data-filter="audio">音乐</button>
+    </div>
+    <select id="stimuliCategory" class="select" style="width:150px">
+      <option value="">全部象限</option>
+      <option value="HVHA">HVHA · 高效价高唤醒</option>
+      <option value="HVLA">HVLA · 高效价低唤醒</option>
+      <option value="LVHA">LVHA · 低效价高唤醒</option>
+      <option value="LVLA">LVLA · 低效价低唤醒</option>
+    </select>
+    <span class="table-count" id="stimuliCount">{{ data.total }} 条</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data" id="stimuliTable">
+      <thead>
+        <tr><th>编号</th><th>类型</th><th>象限</th><th>离散标签</th><th>等级</th><th class="num">质量分</th><th>本地文件</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr data-search="{{ row.stimulus_id }} {{ row.category }} {{ row.discrete_label }} {{ row.grade }}" data-modality="{{ row.modality }}" data-category="{{ row.category }}">
+          <td><strong class="mono">{{ row.stimulus_id }}</strong></td>
+          <td>{% if row.modality == 'video' %}<span class="badge badge-blue">视频</span>{% else %}<span class="badge badge-amber">音乐</span>{% endif %}</td>
+          <td><span class="badge badge-gray">{{ row.category }}</span></td>
+          <td>{{ row.discrete_label }}</td>
+          <td><span class="grade grade-{{ row.grade|lower }}">{{ row.grade }}</span></td>
+          <td class="num">{{ row.quality_score }}</td>
+          <td>{% if row.available %}<span class="status-inline up">{{ icon('check', 12) }} 可用</span>{% else %}<span class="status-inline down">缺失</span>{% endif %}</td>
+          <td class="right">{% if row.preview_url %}<a class="mini-link" href="{{ row.preview_url }}" target="_blank" rel="noreferrer">预览 {{ icon('external', 12) }}</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="panel-foot">
+    <span>选材规则：模态 × 四象限分层，S→A→B→C→D；不在本页重复改规则。</span>
+    <a class="panel-link" href="/experiment">用这批材料开始实验 {{ icon('arrow', 13) }}</a>
+  </div>
+</section>
+
+<div class="legacy-note">
+  <div class="legacy-icon">{{ icon('shield', 18) }}</div>
+  <div>
+    <strong>历史预评价数据已归档</strong>
+    <p>240 条材料的预评价、2,356 份问卷与质量审计属于“数据集制备”的一次性工作，不再放在日常实验流程里。需要查证据时再进入历史页。</p>
+  </div>
+  <a class="btn btn-soft btn-sm" href="/audit">打开历史审计</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/stimuli.js') }}"></script>
+{% endblock %}

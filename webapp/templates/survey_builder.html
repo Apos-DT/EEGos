@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge %}
+{% block title %}{{ '编辑问卷' if survey else '新建问卷' }} · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/surveys">{{ icon('arrow', 15) }} 返回问卷列表</a>
+{% endblock %}
+
+{% block content %}
+{% set selected_ids = survey.materials|map(attribute='id')|list if survey else [] %}
+{% set settings = survey.settings if survey else {} %}
+<form id="surveyForm" data-survey-id="{{ survey.id if survey else '' }}">
+  <section class="panel">
+    <div class="panel-head">
+      <div><h2>{{ '编辑问卷' if survey else '新建问卷' }}</h2><p>选择素材后生成固定分享链接；被试打开链接即可逐条观看并评分。</p></div>
+      <div class="builder-head-actions"><span class="badge badge-blue" id="selectedCount">已选 {{ selected_ids|length }} 个</span><button class="btn btn-primary btn-sm" type="submit">保存并生成链接</button></div>
+    </div>
+    <div class="builder-top">
+      <div class="field">
+        <label for="surveyTitle">问卷标题 <span class="req">*</span></label>
+        <input id="surveyTitle" name="title" required maxlength="120" value="{{ survey.title if survey else '' }}" placeholder="例如：情绪诱发实验 · 2026-11">
+      </div>
+      <div class="field">
+        <label for="surveyDescription">指导语</label>
+        <input id="surveyDescription" name="description" maxlength="1000" value="{{ survey.description if survey else '' }}" placeholder="可选：被试需要知道的操作说明">
+      </div>
+      <div class="builder-checks">
+        <label class="checkline"><input type="checkbox" id="requireCode" {% if not survey or settings.get('require_code', True) %}checked{% endif %}> 要求填写被试编号</label>
+        <label class="checkline"><input type="checkbox" id="allowMultiple" {% if not survey or settings.get('allow_multiple', True) %}checked{% endif %}> 允许同一链接多次提交</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel mt-4">
+    <div class="panel-head">
+      <div><h2>选择素材</h2><p>来自固定目录 <span class="mono">data/media</span>；视频与音乐都可以选。</p></div>
+      <span class="badge badge-gray">{{ data["items"]|length }} 个素材</span>
+    </div>
+    <div class="stimuli-toolbar">
+      <div class="search-box">{{ icon('search', 14) }}<input id="builderSearch" placeholder="搜索文件名 / 标签…"></div>
+      <div class="chip-row" id="builderModality">
+        <button class="chip active" type="button" data-filter="all">全部</button>
+        <button class="chip" type="button" data-filter="video">视频</button>
+        <button class="chip" type="button" data-filter="audio">音乐</button>
+      </div>
+      <select id="builderCategory" class="select" style="width:150px">
+        <option value="">全部象限</option>
+        <option value="HVHA">HVHA</option>
+        <option value="HVLA">HVLA</option>
+        <option value="LVHA">LVHA</option>
+        <option value="LVLA">LVLA</option>
+      </select>
+      <button class="btn btn-soft btn-sm" type="button" id="clearSelection">清空所选</button>
+      <span class="table-count" id="builderVisible">{{ data["items"]|length }} 条</span>
+    </div>
+    <div class="builder-picker">
+      <table class="data" id="builderTable">
+        <thead><tr><th></th><th>文件</th><th>类型</th><th>象限</th><th>标签</th><th>质量</th></tr></thead>
+        <tbody>
+          {% for item in data["items"] %}
+          <tr data-search="{{ item.filename }} {{ item.original_name }} {{ item.category }} {{ item.discrete_label }}" data-modality="{{ item.modality }}" data-category="{{ item.category }}">
+            <td class="pick-cell">
+              <label class="dataset-pick"><input type="checkbox" class="media-pick" value="{{ item.id }}" {% if item.id in selected_ids %}checked{% endif %}><span></span></label>
+            </td>
+            <td><strong class="mono">{{ item.filename }}</strong><div class="hint">{{ item.original_name or '—' }}</div></td>
+            <td>{% if item.modality == 'video' %}<span class="badge badge-blue">视频</span>{% else %}<span class="badge badge-amber">音乐</span>{% endif %}</td>
+            <td><span class="badge badge-gray">{{ item.category or '—' }}</span></td>
+            <td>{{ item.discrete_label or '—' }}</td>
+            <td>{{ item.grade or '—' }}{% if item.quality_score is not none %} <span class="muted">{{ '%.1f'|format(item.quality_score) }}</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-foot">
+      <span>系统会自动避免相邻素材的主导情绪相同；提交后生成分享链接。</span>
+      <button class="btn btn-primary" type="submit" id="saveSurvey">保存并生成链接 {{ icon('arrow', 14) }}</button>
+    </div>
+    <div class="form-error" id="builderError" hidden></div>
+  </section>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/survey_builder.js') }}"></script>
+{% endblock %}

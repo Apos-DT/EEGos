@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "macros.html" import icon, badge, job_console %}
+{% block title %}素材库 · {{ app_name }}{% endblock %}
+
+{% block actions %}
+<a class="btn btn-soft" href="/surveys">{{ icon('file', 15) }} 问卷管理</a>
+<a class="btn btn-primary" href="/surveys/new">{{ icon('play', 15) }} 新建问卷</a>
+{% endblock %}
+
+{% block content %}
+<section class="stimuli-intro">
+  <div>
+    <h2>素材库</h2>
+    <p>统一管理视频与音乐；问卷只从 <span class="mono">data/media</span> 读取素材。源文件夹变化不会再影响已建问卷。</p>
+  </div>
+  <div class="stimuli-stats">
+    <div><strong>{{ data.counts.video }}</strong><span>视频</span></div>
+    <div><strong>{{ data.counts.audio }}</strong><span>音乐</span></div>
+    <div><strong>{{ data.counts.managed }}</strong><span>已纳管</span></div>
+    <div><strong>{{ data.selected_count }}</strong><span>正式选材</span></div>
+  </div>
+</section>
+
+<section class="panel mt-4">
+  <div class="panel-head">
+    <div><h2>素材文件</h2><p>{{ data.managed_dir }} · 源目录：{{ data.source.video }} / {{ data.source.audio }}</p></div>
+    <button class="btn btn-soft btn-sm" type="button" id="mediaSync">{{ icon('refresh', 13) }} 同步/重扫</button>
+  </div>
+  <div class="stimuli-toolbar">
+    <div class="search-box">{{ icon('search', 14) }}<input id="mediaSearch" placeholder="搜索文件名 / 原始名称 / 标签…"></div>
+    <div class="chip-row" id="mediaModality">
+      <button class="chip active" type="button" data-filter="all">全部</button>
+      <button class="chip" type="button" data-filter="video">视频</button>
+      <button class="chip" type="button" data-filter="audio">音乐</button>
+    </div>
+    <select id="mediaCategory" class="select" style="width:150px">
+      <option value="">全部象限</option>
+      <option value="HVHA">HVHA</option>
+      <option value="HVLA">HVLA</option>
+      <option value="LVHA">LVHA</option>
+      <option value="LVLA">LVLA</option>
+    </select>
+    <label class="checkline" style="margin:0"><input type="checkbox" id="mediaSelectedOnly"> 只看正式选材</label>
+    <span class="table-count" id="mediaCount">{{ data["items"]|length }} 条</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data" id="mediaTable">
+      <thead><tr><th>文件</th><th>类型</th><th>象限</th><th>标签</th><th>质量</th><th>选材</th><th>文件</th><th></th></tr></thead>
+      <tbody>
+        {% for item in data["items"] %}
+        <tr data-search="{{ item.filename }} {{ item.original_name }} {{ item.category }} {{ item.discrete_label }}" data-modality="{{ item.modality }}" data-category="{{ item.category }}" data-selected="{{ '1' if item.selected else '0' }}">
+          <td><strong class="mono">{{ item.filename }}</strong><div class="hint">{{ item.original_name or '—' }}</div></td>
+          <td>{% if item.modality == 'video' %}<span class="badge badge-blue">视频</span>{% else %}<span class="badge badge-amber">音乐</span>{% endif %}</td>
+          <td><span class="badge badge-gray">{{ item.category or '—' }}</span></td>
+          <td>{{ item.discrete_label or '—' }}</td>
+          <td>{{ item.grade or '—' }}{% if item.quality_score is not none %} <span class="muted">{{ '%.1f'|format(item.quality_score) }}</span>{% endif %}</td>
+          <td>{% if item.selected %}<span class="badge badge-green">正式</span>{% else %}<span class="muted">候选</span>{% endif %}</td>
+          <td>{% if item.available %}<span class="status-inline up">{{ icon('check', 12) }} {{ item.size_mb }} MB</span>{% else %}<span class="status-inline down">缺失</span>{% endif %}</td>
+          <td class="right">{% if item.preview_url %}<a class="mini-link" href="{{ item.preview_url }}" target="_blank" rel="noreferrer">预览 {{ icon('external', 12) }}</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{{ job_console('mediaJob', '素材库同步') }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/media.js') }}"></script>
+{% endblock %}
