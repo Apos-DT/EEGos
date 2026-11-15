@@ -187,7 +187,7 @@ python -m webapp
 
 - 端口占用：`$env:EEG_WEB_PORT=8771; python -m webapp`
 - 只监听本机：默认 `127.0.0.1`；
-- 测试：`python -m unittest discover -s tests -v`（17 项，含 4 项 Web 测试）；
+- 测试：`python -m unittest discover -s tests -v`（28 项，含 Web 与问卷/素材测试）；
 - 任务日志：`artifacts/web_jobs/`。
 
 ---
@@ -207,7 +207,7 @@ python -m webapp
 
 - 本文是 `02_软件需求规格说明书` FR-16（命令行）的 Web 扩展；
 - 页面/接口/任务模型可作为论文“系统实现”章节的截图与说明；
-- 测试结果并入 `09_测试计划与验收标准`（17 项）；
+- 测试结果并入 `09_测试计划与验收标准`（28 项）；
 - 数据边界并入 `05_数据审计报告` 与 `08_数据字典`；
 - 视觉设计不作为创新点，创新点仍是数据门控 + 双视角 + 多原型。
 

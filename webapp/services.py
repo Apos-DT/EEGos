@@ -666,7 +666,7 @@ def overview() -> dict[str, Any]:
             "sessions": experiment["sessions"],
             "responses": experiment["responses"],
             "participants": experiment["participants"],
-            "tests": 17,
+            "tests": 28,
         },
         "quality_grades": _grade_counts(quality),
         "quality_by_modality": quality_by_modality,
