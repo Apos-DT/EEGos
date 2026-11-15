@@ -288,6 +288,28 @@ def submit_response(session_id: str, data: dict[str, Any]) -> dict[str, Any]:
         return public_session(session)
 
 
+def advance_session(session_id: str) -> dict[str, Any]:
+    """只推进播放进度，不写旧格式 response。
+
+    自定义 schema 问卷用 :func:`webapp.surveys.submit_schema_answers` 写
+    统一答卷，这里单独负责 session 的游标与完成状态，两个通道互不干扰。
+    """
+
+    with _LOCK:
+        session = load_session(session_id)
+        if session.get("status") != "running":
+            raise ValueError("实验已结束")
+        index = int(session["current_index"])
+        if index >= len(session["sequence"]):
+            raise ValueError("没有待回答的刺激")
+        session["current_index"] = index + 1
+        if session["current_index"] >= len(session["sequence"]):
+            session["status"] = "completed"
+            session["completed_at"] = _now()
+        _save(session)
+        return public_session(session)
+
+
 def abort_session(session_id: str) -> dict[str, Any]:
     with _LOCK:
         session = load_session(session_id)

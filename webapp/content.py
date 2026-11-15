@@ -44,6 +44,7 @@ PAGE_META = {
     "experiment": "现场实验（旧版）",
     "surveys": "问卷管理",
     "survey_builder": "新建问卷",
+    "survey_data": "问卷数据与元数据",
     "responses": "实验问卷",
     "media": "素材库",
     "stimuli": "素材库",

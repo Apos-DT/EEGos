@@ -10,11 +10,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .experiment import SESSIONS_DIR, public_session, submit_response
+from .experiment import SESSIONS_DIR, advance_session, public_session, submit_response
 from .media import item_by_id, load_manifest, media_path
+from .questionnaire import (
+    QUESTION_TYPE_LABELS,
+    QUESTION_TYPES,
+    ROLES,
+    default_schema,
+    normalize_schema,
+    schema_fingerprint,
+)
 from .services import ROOT
 
 SURVEYS_DIR = ROOT / "data" / "surveys"
+RESPONSES_DIR = ROOT / "data" / "survey_responses"
 
 
 def _now() -> str:
@@ -74,19 +83,62 @@ def _session_count(survey_id: str) -> int:
     return count
 
 
+def _response_count(survey_id: str) -> int:
+    """统一答卷仓库（JSONL）里的答卷数，不依赖 survey_meta 以避免循环导入。"""
+
+    path = RESPONSES_DIR / f"{re.sub(r'[^A-Za-z0-9_-]+', '', survey_id)}.jsonl"
+    if not path.exists():
+        return 0
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return sum(1 for line in handle if line.strip())
+    except OSError:
+        return 0
+
+
+def infer_kind(survey: dict[str, Any]) -> str:
+    """旧问卷没有 kind 字段时，按素材模态推断量表版本。"""
+
+    explicit = survey.get("kind")
+    if explicit in {"video", "audio"}:
+        return explicit
+    materials = survey.get("materials") or []
+    return "audio" if materials and all(item.get("modality") == "audio" for item in materials) else "video"
+
+
+def get_schema(survey: dict[str, Any]) -> list[dict[str, Any]]:
+    """读取题目定义；对旧版问卷惰性补默认量表，不改写历史文件。"""
+
+    raw = survey.get("schema")
+    if raw:
+        return normalize_schema(raw)
+    return default_schema(infer_kind(survey))
+
+
 def _public(survey: dict[str, Any]) -> dict[str, Any]:
+    status = survey.get("status", "open")
+    status_label = {"open": "开放", "closed": "已关闭", "archived": "历史导入"}.get(status, status)
+    sessions = _session_count(survey["id"])
+    stored = _response_count(survey["id"])
     return {
         "id": survey["id"],
         "token": survey["token"],
         "title": survey["title"],
         "description": survey.get("description", ""),
-        "status": survey.get("status", "open"),
+        "status": status,
+        "status_label": status_label,
         "created_at": survey["created_at"],
         "updated_at": survey.get("updated_at", survey["created_at"]),
+        "kind": infer_kind(survey),
+        "origin": survey.get("origin", {"type": "local"}),
+        "schema_version": int(survey.get("schema_version", 1) or 1),
+        "n_questions": len(get_schema(survey)),
         "n_materials": len(survey.get("materials", [])),
         "n_video": sum(1 for item in survey.get("materials", []) if item.get("modality") == "video"),
         "n_audio": sum(1 for item in survey.get("materials", []) if item.get("modality") == "audio"),
-        "n_responses": _session_count(survey["id"]),
+        "n_sessions": sessions,
+        "n_stored_responses": stored,
+        "n_responses": sessions + stored,
         "public_path": f"/q/{survey['token']}",
         "materials": survey.get("materials", []),
     }
@@ -128,11 +180,20 @@ def create_survey(
     material_ids: list[str] | None = None,
     require_code: bool = True,
     allow_multiple: bool = True,
+    kind: str = "",
+    schema: list[dict[str, Any]] | None = None,
+    target_n: int = 0,
 ) -> dict[str, Any]:
     title = (title or "").strip()
     if not title:
         raise ValueError("请填写问卷标题")
     items = _material_items(material_ids or [])
+    resolved_kind = kind if kind in {"video", "audio"} else (
+        "audio" if items and all(item.get("modality") == "audio" for item in items) else "video"
+    )
+    questions = normalize_schema(schema) if schema is not None else default_schema(resolved_kind)
+    if not questions:
+        raise ValueError("问卷至少需要一道题")
     survey = {
         "id": f"Q{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}",
         "token": secrets.token_urlsafe(7),
@@ -140,23 +201,96 @@ def create_survey(
         "description": description.strip()[:1000],
         "created_at": _now(),
         "status": "open",
+        "kind": resolved_kind,
         "settings": {"require_code": require_code, "allow_multiple": allow_multiple},
+        "schema": questions,
+        "schema_version": 1,
+        "schema_hash": schema_fingerprint(questions),
+        "schema_history": [],
+        "target_n": max(0, int(target_n or 0)),
+        "origin": {"type": "local"},
         "materials": items,
     }
     _save(survey)
     return _public(survey)
+
+
+def create_survey_from_import(
+    title: str,
+    description: str,
+    kind: str,
+    schema: list[dict[str, Any]],
+    source_filename: str,
+) -> dict[str, Any]:
+    """为历史问卷星导出创建归档问卷（不绑定本地素材，不对外发布）。"""
+
+    questions = normalize_schema(schema)
+    survey = {
+        "id": f"Q{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}",
+        "token": secrets.token_urlsafe(7),
+        "title": (title or "历史问卷导入").strip()[:120],
+        "description": (description or "").strip()[:1000],
+        "created_at": _now(),
+        "status": "archived",
+        "kind": kind,
+        "settings": {"require_code": True, "allow_multiple": False},
+        "schema": questions,
+        "schema_version": 1,
+        "schema_hash": schema_fingerprint(questions),
+        "schema_history": [],
+        "target_n": 0,
+        "origin": {"type": "wjx_import", "filename": source_filename},
+        "materials": [],
+    }
+    _save(survey)
+    return survey
+
 
 def update_survey(
     survey_id: str,
     title: str,
     description: str,
     material_ids: list[str] | None = None,
+    schema: list[dict[str, Any]] | None = None,
+    target_n: int | None = None,
+    require_code: bool | None = None,
+    allow_multiple: bool | None = None,
 ) -> dict[str, Any]:
     survey = load_survey(survey_id)
     survey["title"] = title.strip() or survey["title"]
     survey["description"] = (description or "").strip()[:1000]
     if material_ids is not None:
         survey["materials"] = _material_items(material_ids)
+    if target_n is not None:
+        survey["target_n"] = max(0, int(target_n))
+    settings = survey.get("settings", {})
+    if require_code is not None:
+        settings["require_code"] = bool(require_code)
+    if allow_multiple is not None:
+        settings["allow_multiple"] = bool(allow_multiple)
+    survey["settings"] = settings
+    if schema is not None:
+        new_schema = normalize_schema(schema)
+        if not new_schema:
+            raise ValueError("问卷至少需要一道题")
+        old_schema = get_schema(survey)
+        if schema_fingerprint(new_schema) != survey.get("schema_hash", schema_fingerprint(old_schema)):
+            history = list(survey.get("schema_history") or [])
+            history.append({
+                "version": int(survey.get("schema_version", 1) or 1),
+                "schema_hash": survey.get("schema_hash") or schema_fingerprint(old_schema),
+                "schema": old_schema,
+                "retired_at": _now(),
+            })
+            survey["schema_history"] = history
+            survey["schema_version"] = int(survey.get("schema_version", 1) or 1) + 1
+            survey["schema"] = new_schema
+            survey["schema_hash"] = schema_fingerprint(new_schema)
+    # 旧问卷（无 schema 字段）在编辑时正式落盘当前量表，避免版本悬空
+    survey.setdefault("schema", get_schema(survey))
+    survey.setdefault("schema_hash", schema_fingerprint(survey["schema"]))
+    survey.setdefault("schema_version", 1)
+    survey.setdefault("kind", infer_kind(survey))
     _save(survey)
     return _public(survey)
 
@@ -283,5 +417,64 @@ def public_media(token: str, session_id: str) -> tuple[Path, str]:
 
 
 def public_submit(token: str, session_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    """旧版固定量表通道，保留给既有问卷与测试，不改动。"""
+
     validate_public_session(token, session_id)
     return submit_response(session_id, data)
+
+
+def question_templates() -> dict[str, Any]:
+    """问卷设计器所需的题型、角色与两套标准量表模板。"""
+
+    return {
+        "types": [{"value": value, "label": QUESTION_TYPE_LABELS[value]} for value in QUESTION_TYPES],
+        "roles": [{"value": value, "label": label} for value, label in ROLES.items()],
+        "templates": {
+            "video": default_schema("video"),
+            "audio": default_schema("audio"),
+        },
+    }
+
+
+def submit_schema_answers(
+    token: str,
+    session_id: str,
+    answers: dict[str, Any],
+    client_ip: str = "",
+    watch_seconds: int = 0,
+) -> dict[str, Any]:
+    """自定义量表通道：按问卷 schema 校验并写入统一答卷仓库。
+
+    刺激编号与评分者由会话自动填充，避免被试手填造成编号污染；
+    session 仅承担播放进度，答卷本体落在 JSONL 并携带完整元数据。
+    """
+
+    survey = survey_by_token(token)
+    if survey.get("status") != "open":
+        raise ValueError("问卷已关闭")
+    session = validate_public_session(token, session_id)
+    if session.get("status") != "running":
+        raise ValueError("实验已结束")
+    index = int(session.get("current_index", 0))
+    sequence = session.get("sequence") or []
+    if index >= len(sequence):
+        raise ValueError("没有待回答的素材")
+    current = sequence[index]
+
+    filled = dict(answers or {})
+    for question in get_schema(survey):
+        if question.get("role") == "stimulus" and not filled.get(question["id"]):
+            filled[question["id"]] = current.get("stimulus_id", "")
+        elif question.get("role") == "rater" and not filled.get(question["id"]):
+            filled[question["id"]] = session.get("participant_code", "")
+
+    from . import survey_meta  # 延迟导入，避免 survey_meta -> surveys 循环
+
+    record = survey_meta.build_response_record(
+        survey, filled, origin="local", session_id=session_id,
+        watch_seconds=watch_seconds, strict=True,
+    )
+    survey_meta.set_client_ip_meta(record, client_ip)
+    record["submitted_at"] = _now()
+    survey_meta.append_response(record)
+    return {"session": advance_session(session_id), "response_id": record["response_id"]}
