@@ -34,6 +34,7 @@ class Job:
     logs: list[str] = field(default_factory=list)
     result: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    runtime: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self, include_logs: bool = True) -> dict[str, Any]:
         payload = asdict(self)
@@ -101,6 +102,11 @@ class JobManager:
             # Avoid writing every line to disk; keep the latest tail durable.
             if len(job.logs) % 8 == 0:
                 self._save(job)
+
+    def bind_process(self, job: Job, pid: int, output: Path | None = None) -> None:
+        with self._lock:
+            job.runtime = {"pid": pid, "output": str(output) if output else None}
+            self._save(job)
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:

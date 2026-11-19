@@ -141,3 +141,21 @@ class TrainRequest(BaseModel):
     dropout: float = Field(0.25, ge=0, le=0.9)
     prototypes: int = Field(2, ge=1, le=12)
     proto_weight: float = Field(0.1, ge=0, le=10)
+
+
+class DDARequest(BaseModel):
+    """Run configuration for the separately installed DDA sidecar."""
+
+    setting: str = Field("cross-subject", pattern="^(cross-subject|cross-session)$")
+    algorithm: str = Field("UDDA", pattern="^(UDDA|SDDA)$")
+    epochs: int = Field(600, ge=1, le=600)
+    seed: int = Field(42, ge=0, le=2**31 - 1)
+    target_labeled_trials: int = Field(4, ge=0, le=24)
+    target_subject: str | None = Field(None, pattern="^S(0[1-9]|1[0-5])$")
+    target_session: str | None = Field(None, pattern="^[1-3]$")
+    max_folds: int = Field(0, ge=0, le=90)
+    batch_size: int = Field(30, ge=2, le=512)
+    lr: float = Field(0.001, gt=0, le=1)
+    beta: float = Field(0.3, ge=0, le=10)
+    pseudo_threshold: float = Field(0.75, ge=0, le=1)
+    eval_interval: int = Field(10, ge=1, le=600)

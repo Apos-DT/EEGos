@@ -112,6 +112,9 @@ async def experiment_report(run_id: str) -> HTMLResponse:
     path = resolve_experiment(run_id)
     if not path:
         raise HTTPException(status_code=404, detail="实验不存在")
+    from ..integrations.dda import refresh_dda_report
+
+    await run_in_threadpool(refresh_dda_report, path)
     report = path / "report.html"
     if not report.exists():
         raise HTTPException(status_code=404, detail="报告不存在")

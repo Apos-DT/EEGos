@@ -86,6 +86,13 @@ WEB_RELOAD = os.environ.get("EEG_WEB_RELOAD", "0").strip().lower() in {"1", "tru
 # 为空表示不校验；公开问卷路径（/q、/api/public）永远不校验。
 ACCESS_TOKEN = os.environ.get("EEG_WEB_TOKEN", "").strip()
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+# Optional research sidecar. Its implementation stays outside this application;
+# the Web layer only starts its CLI and collects the standard experiment output.
+DDA_REPO_DIR = Path(os.environ.get("EEG_DDA_REPO", str(ROOT.parent / "DDA-reproduction"))).expanduser().resolve()
+DDA_PYTHON = os.environ.get(
+    "EEG_DDA_PYTHON",
+    str(DDA_REPO_DIR / ".venv" / "Scripts" / "python.exe"),
+).strip()
 
 paths.ensure_dirs()
 

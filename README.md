@@ -34,6 +34,7 @@
 - `train`：被试依赖与 LOSO 跨被试训练；MLP、DGCNN、DualView-MultiProto、EEGNet；指标、置信区间、混淆矩阵、检查点。
 - `demo`：合成特征端到端跑通，生成自包含 HTML 报告，专门用于软件验收，不作为科研结论。
 - 58 项单元/集成测试全部通过（含 Web 与问卷/素材测试）；实际数据审计结果与既有质量报告的 22/29 条问题视频（音乐）计数一致。
+- DDA 论文复现已接入独立 sidecar 调用 API；算法实现留在项目同级 `DDA-reproduction/`，不并入系统核心。复现假设、数据划分和运行方式见 `docs/18_DDA论文复现与外部集成.md`。
 
 ### 1.3 实际数据审计的关键结论
 
@@ -134,6 +135,8 @@ docker run --rm -p 8770:8770 \
 10 个日常页面（含工作台），按三大功能域组织：实验（问卷管理、问卷数据、素材库）、EEG 信号（原始 EEG 处理、数据集与特征）、模型训练（模型训练、实验记录），以及项目文档与系统状态；另有 1 个历史预评价归档页。  
 API 文档：`/api/swagger`；页面与 API 共用同一套数据/算法。
 
+DDA 论文复现入口：`POST /api/integrations/dda/run`。用 `EEG_DDA_REPO` 指定外部 sidecar 目录，用 `EEG_DDA_PYTHON` 指定独立训练解释器；详见 `docs/18_DDA论文复现与外部集成.md`。
+
 ### raw.npz 契约
 
 ```text
@@ -215,6 +218,7 @@ EEGos/
 | [Web 系统设计与使用说明](docs/15_Web系统设计与使用说明.md) | 前后端、页面、API 与任务模型 | 系统实现 |
 | [SEED-IV 真实数据接入报告](docs/16_SEED_IV数据接入报告.md) | 数据清单、适配器、真实基线 | 数据/实验 |
 | [实验采集与 EEG 预处理说明](docs/17_实验采集与EEG预处理说明.md) | 视频问卷、EEGLAB 清洗、数据对齐 | 实验/信号 |
+| [DDA 论文复现与外部集成](docs/18_DDA论文复现与外部集成.md) | 论文协议、sidecar 边界、API 与复现限制 | 研究/实现 |
 
 > Word 版由 `scripts/build_docx.py` 从 Markdown 统一生成，封面、目录、页眉页脚和图表编号可按学校模板再调整。
 

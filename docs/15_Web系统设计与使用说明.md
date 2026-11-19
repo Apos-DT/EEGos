@@ -179,6 +179,7 @@ GET /api/jobs/{id}
 | GET | `/api/datasets` | 特征集列表（形状/被试/类别/manifest） |
 | POST | `/api/datasets/merge` | `{dataset_ids:[...]}` 合并多被试特征集 |
 | POST | `/api/train/run` | `{dataset_id,model,setting,epochs,...}` → job |
+| POST | `/api/integrations/dda/run` | 通过独立 sidecar 启动 DDA 论文复现 → job |
 | GET | `/api/jobs/{id}` | 状态、日志、结果 |
 | GET | `/api/experiments` | 运行列表与最佳结果 |
 | GET | `/api/experiments/{id}/report` | HTML 报告 |

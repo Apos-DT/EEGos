@@ -519,7 +519,12 @@ def _experiment_info(path: Path) -> dict[str, Any] | None:
     confusion = path / "figures" / "confusion_matrix.png"
     per_subject = path / "figures" / "per_subject_accuracy.png"
     raw_setting = str(metrics.get("setting", ""))
-    setting = "loso" if raw_setting in {"loso", "leave-one-subject-out"} else "subject-dependent"
+    if raw_setting in {"loso", "leave-one-subject-out"}:
+        setting, setting_label = "loso", "LOSO"
+    elif raw_setting == "cross-session":
+        setting, setting_label = "cross-session", "跨 Session"
+    else:
+        setting, setting_label = "subject-dependent", "被试依赖"
     return {
         "id": run_id,
         "label": "合成演示 · 软件验收" if is_demo else run_id,
@@ -527,7 +532,7 @@ def _experiment_info(path: Path) -> dict[str, Any] | None:
         "model": metrics.get("model", ""),
         "setting": setting,
         "setting_raw": raw_setting,
-        "setting_label": "LOSO" if setting == "loso" else "被试依赖",
+        "setting_label": setting_label,
         "n_samples": metrics.get("n_samples", 0),
         "n_subjects": metrics.get("n_subjects", 0),
         "n_classes": metrics.get("n_classes", 0),
