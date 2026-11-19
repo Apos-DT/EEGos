@@ -1,91 +1,46 @@
 {% extends "base.html" %}
-{% from "macros.html" import icon, badge %}
+{% from "macros.html" import icon %}
 {% block title %}问卷管理 · {{ app_name }}{% endblock %}
-
 {% block actions %}
-<a class="btn btn-soft" href="/survey-data">{{ icon('layers', 15) }} 问卷数据与元数据</a>
-<a class="btn btn-soft" href="/media">{{ icon('sliders', 15) }} 素材库</a>
+<a class="btn btn-soft" href="/survey-data">{{ icon('chart', 15) }} 查看答卷</a>
 <a class="btn btn-primary" href="/surveys/new">{{ icon('play', 15) }} 新建问卷</a>
 {% endblock %}
-
 {% block content %}
-<div class="stats-grid">
-  <article class="stat-card" style="--tint:#e9fbf7;--tone:#0c7368">
-    <div class="stat-top"><span>问卷方案</span><span class="stat-icon">{{ icon('file', 16) }}</span></div>
-    <div class="stat-value">{{ surveys|length }}<small>个</small></div>
-    <div class="stat-foot"><span>{{ surveys|selectattr('status','equalto','open')|list|length }} 个开放</span><span>·</span><span>链接可分享</span></div>
-  </article>
-  <article class="stat-card" style="--tint:#eaf0ff;--tone:#2f6fed">
-    <div class="stat-top"><span>收到响应</span><span class="stat-icon">{{ icon('chart', 16) }}</span></div>
-    <div class="stat-value">{{ surveys|sum(attribute='n_responses') }}<small>份</small></div>
-    <div class="stat-foot"><span>按会话统计</span><span>·</span><span>实时更新</span></div>
-  </article>
-  <article class="stat-card" style="--tint:#fff4e2;--tone:#b45309">
-    <div class="stat-top"><span>素材总量</span><span class="stat-icon">{{ icon('layers', 16) }}</span></div>
-    <div class="stat-value">240<small>条</small></div>
-    <div class="stat-foot"><span>视频 120</span><span>·</span><span>音乐 120</span></div>
-  </article>
-  <article class="stat-card" style="--tint:#f4f0ff;--tone:#6941c6">
-    <div class="stat-top"><span>正式实验</span><span class="stat-icon">{{ icon('check', 16) }}</span></div>
-    <div class="stat-value">80<small>条</small></div>
-    <div class="stat-foot"><span>S/A/B 优先</span><span>·</span><span>四象限平衡</span></div>
-  </article>
+{% set n_open = surveys|selectattr('status','equalto','open')|list|length %}
+{% set n_archived = surveys|selectattr('status','equalto','archived')|list|length %}
+<div class="survey-overview" aria-label="问卷概况">
+  <div><span>全部问卷</span><strong>{{ surveys|length }}</strong></div>
+  <div><span><i class="survey-status-dot"></i>开放中</span><strong>{{ n_open }}</strong></div>
+  <div><span>已归档</span><strong>{{ n_archived }}</strong></div>
+  <div><span>累计答卷</span><strong>{{ surveys|sum(attribute='n_responses') }}<small>份</small></strong></div>
 </div>
-
-<div class="share-hint">
-  <strong>分享链接怎么给被试</strong>
-  <span>请用本机局域网地址打开本页（例如 <span class="mono">http://192.168.x.x:8770/surveys</span>），再复制链接；若显示 127.0.0.1，手机无法访问。</span>
+<div class="survey-library-head">
+  <div class="survey-filter-group" role="group" aria-label="按状态筛选问卷">
+    <button class="chip active" type="button" data-survey-filter="all" aria-pressed="true">全部</button>
+    <button class="chip" type="button" data-survey-filter="open" aria-pressed="false">开放中</button>
+    <button class="chip" type="button" data-survey-filter="closed" aria-pressed="false">已关闭</button>
+    <button class="chip" type="button" data-survey-filter="archived" aria-pressed="false">已归档</button>
+  </div>
+  <div class="search-box survey-search">{{ icon('search', 16) }}<input id="surveySearch" type="search" placeholder="搜索问卷标题、说明…" aria-label="搜索问卷"></div>
+  <span class="table-count" id="surveyVisible" aria-live="polite">{{ surveys|length }} 个问卷</span>
 </div>
-
-<section class="panel mt-4">
-  <div class="panel-head">
-    <div><h2>问卷列表</h2><p>每个问卷生成一个固定分享链接；被试打开链接即可观看素材并填写。</p></div>
-    <span class="badge badge-blue">{{ surveys|length }} surveys</span>
-  </div>
-  {% if surveys %}
-  <div class="survey-list">
-    {% for survey in surveys %}
-    <article class="survey-card" data-survey="{{ survey.id }}">
-      <div class="survey-main">
-        <div class="survey-title-line">
-          <h3>{{ survey.title }}</h3>
-          <span class="badge {% if survey.status == 'open' %}badge-green{% elif survey.status == 'archived' %}badge-amber{% else %}badge-gray{% endif %}">{{ survey.status_label }}</span>
-          <span class="badge badge-gray">量表 v{{ survey.schema_version }}</span>
-        </div>
-        <p>{{ survey.description or '未填写说明' }}</p>
-        <div class="survey-meta">
-          <span>{{ survey.n_materials }} 个素材</span>
-          <span>{{ survey.n_video }} 视频 / {{ survey.n_audio }} 音乐</span>
-          <span>{{ survey.n_questions }} 道题</span>
-          <span>{{ survey.n_responses }} 份响应</span>
-          <span class="mono">{{ survey.created_at[:16].replace('T', ' ') }}</span>
-        </div>
-        <div class="share-line">
-          {% if survey.status == 'archived' %}
-          <span class="badge badge-gray">历史导入归档 · 不对外发布</span>
-          {% else %}
-          <code>{{ survey.public_path }}</code>
-          <button class="btn btn-soft btn-sm copy-link" type="button" data-path="{{ survey.public_path }}" data-base="{{ share_base }}">{{ icon('file', 12) }} 复制链接</button>
-          <a class="btn btn-soft btn-sm" href="{{ survey.public_path }}" target="_blank" rel="noreferrer">打开 {{ icon('external', 12) }}</a>
-          {% endif %}
-        </div>
-      </div>
-      <div class="survey-actions">
-        <a class="btn btn-soft btn-sm" href="/surveys/{{ survey.id }}/edit">{{ icon('settings', 12) }} 编辑</a>
-        {% if survey.status != 'archived' %}
-        <button class="btn btn-soft btn-sm toggle-survey" type="button" data-id="{{ survey.id }}">{{ '关闭' if survey.status == 'open' else '重新开放' }}</button>
-        {% endif %}
-        <a class="btn btn-soft btn-sm" href="/survey-data?survey_id={{ survey.id }}&tab=responses">{{ icon('chart', 12) }} 查看答卷</a>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty" style="padding:34px"><div class="empty-icon">{{ icon('play', 26) }}</div><h3>还没有问卷</h3><p>从素材库选择视频/音乐，生成第一份可分享问卷。</p><a class="btn btn-primary" href="/surveys/new">新建问卷</a></div>
-  {% endif %}
-</section>
+<div class="survey-grid" id="surveyGrid">
+{% for survey in surveys %}
+  <article class="survey-tile" data-survey="{{ survey.id }}" data-status="{{ survey.status }}" data-search="{{ survey.title }} {{ survey.description or '' }} {{ survey.id }}">
+    <div class="survey-tile-top"><span class="survey-tile-icon">{{ icon('file', 20) }}</span><span class="badge {% if survey.status == 'open' %}badge-green{% elif survey.status == 'archived' %}badge-amber{% else %}badge-neutral{% endif %}">{{ survey.status_label }}</span></div>
+    <h2><a href="/surveys/{{ survey.id }}/edit">{{ survey.title }}</a></h2>
+    <p class="survey-description" title="{{ survey.description or '' }}">{{ survey.description or '暂未填写问卷说明' }}</p>
+    <div class="survey-tile-stats"><div><strong>{{ survey.n_materials }}</strong><span>素材</span></div><div><strong>{{ survey.n_questions }}</strong><span>题目</span></div><div><strong>{{ survey.n_responses }}</strong><span>答卷</span></div></div>
+    <div class="survey-tile-meta"><span>{{ survey.n_video }} 视频 · {{ survey.n_audio }} 音乐</span><span>量表 v{{ survey.schema_version }}</span></div>
+    <div class="survey-tile-primary">
+      {% if survey.status != 'archived' %}<button class="btn btn-primary btn-sm copy-link" type="button" data-path="{{ survey.public_path }}" data-base="{{ share_base }}">{{ icon('file', 14) }} 复制分享链接</button><a class="btn btn-soft btn-sm" href="{{ survey.public_path }}" target="_blank" rel="noreferrer" aria-label="预览 {{ survey.title }}">预览 {{ icon('external', 13) }}</a>
+      {% else %}<a class="btn btn-soft btn-sm" href="/survey-data?survey_id={{ survey.id }}&tab=responses">{{ icon('chart', 14) }} 浏览归档答卷</a><span class="hint">历史导入，不对外发布</span>{% endif %}
+    </div>
+    <div class="survey-tile-footer"><span class="survey-created">{{ survey.created_at[:10] }}</span><div class="survey-tile-actions"><a href="/surveys/{{ survey.id }}/edit" aria-label="编辑 {{ survey.title }}">编辑</a>{% if survey.status != 'archived' %}<button class="toggle-survey" type="button" data-id="{{ survey.id }}">{{ '关闭' if survey.status == 'open' else '重新开放' }}</button><a href="/survey-data?survey_id={{ survey.id }}&tab=responses">答卷</a>{% endif %}</div></div>
+  </article>
+{% endfor %}
+</div>
+<div class="empty survey-empty" id="surveyEmpty" {% if surveys %}hidden{% endif %}><div class="empty-icon">{{ icon('file', 28) }}</div><h3>{{ '没有匹配的问卷' if surveys else '创建第一份问卷' }}</h3><p>{{ '试试其他关键词或切换状态筛选。' if surveys else '选择素材、设计题目，再分享给被试填写。' }}</p>{% if not surveys %}<a class="btn btn-primary" href="/surveys/new">新建问卷</a>{% endif %}</div>
+<details class="survey-sharing"><summary>{{ icon('info', 15) }} 分享与访问说明</summary><p>复制的链接使用本机局域网地址，被试设备需与本机处于同一网络。预览用于本机查看；归档问卷仅用于管理历史答卷。</p></details>
 {% endblock %}
-
-{% block scripts %}
-<script src="{{ url_for('static', path='js/surveys.js') }}"></script>
-{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', path='js/surveys.js') }}"></script>{% endblock %}

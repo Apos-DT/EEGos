@@ -8,32 +8,9 @@
 {% endblock %}
 
 {% block content %}
-<section class="hero">
-  <div>
-    <div class="hero-eyebrow"><span class="dot"></span> Daily research flow · local first</div>
-    <h2 class="hero-title">实验、EEG、训练，在一条日常流水线上。</h2>
-    <p>播放刺激并收集主观评分，导入 EEGLAB 原始数据，清洗、分段、提特征，再用 LOSO 训练与对比。只保留实际会用到的步骤。</p>
-    <div class="hero-actions">
-      <a class="btn btn-ghost btn-lg" href="/surveys/new">{{ icon('play', 17) }} 开始一轮实验</a>
-      <a class="btn btn-ghost btn-lg" href="/eeg" style="background:rgba(111,242,219,.14);border-color:rgba(111,242,219,.32);color:#d8fff8">{{ icon('waves', 17) }} 导入 EEGLAB</a>
-    </div>
-    <div class="hero-meta">
-      <span>{{ icon('lock', 13) }} 数据不出本机</span>
-      <span>{{ icon('check', 13) }} 58 项测试通过</span>
-      <span>{{ icon('layers', 13) }} LOSO 防泄漏</span>
-    </div>
-  </div>
-  <div class="hero-visual">
-    <div class="signal-card">
-      <div class="signal-head"><span>Signal preview / DE</span><span class="signal-live"><i></i> LIVE</span></div>
-      <svg class="signal-chart" viewBox="0 0 300 110" preserveAspectRatio="none" aria-hidden="true">
-        <defs><linearGradient id="waveFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#6ff2db" stop-opacity=".28"/><stop offset="1" stop-color="#6ff2db" stop-opacity="0"/></linearGradient></defs>
-        <path d="M0 72 C14 72 18 46 31 46 S45 82 59 82 71 34 87 34 101 74 115 74 128 54 143 54 157 88 171 88 186 24 201 24 213 70 227 70 241 45 255 45 270 65 300 65 L300 110 L0 110 Z" fill="url(#waveFill)"/>
-        <path d="M0 72 C14 72 18 46 31 46 S45 82 59 82 71 34 87 34 101 74 115 74 128 54 143 54 157 88 171 88 186 24 201 24 213 70 227 70 241 45 255 45 270 65 300 65" fill="none" stroke="#6ff2db" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      <div class="signal-stats"><div><small>CHANNELS</small><strong>62</strong></div><div><small>BANDS</small><strong>5</strong></div><div><small>WINDOW</small><strong>4.0 s</strong></div></div>
-    </div>
-  </div>
+<section class="workspace-intro">
+  <div><span class="workspace-kicker">研究工作台</span><h2>从问卷采集到模型实验</h2><p>组织实验素材、管理 EEG 数据，在同一工作区跟进训练与研究记录。</p></div>
+  <div class="workspace-shortcuts"><a class="btn btn-primary" href="/surveys/new">{{ icon('play', 16) }} 新建问卷</a><a class="btn btn-soft" href="/training#backgroundTraining">{{ icon('activity', 16) }} 查看后台训练</a></div>
 </section>
 
 <div class="domain-grid">
@@ -76,7 +53,7 @@
   <article class="stat-card" style="--tint:#f4f0ff;--tone:#6941c6">
     <div class="stat-top"><span>模型运行</span><span class="stat-icon">{{ icon('activity', 16) }}</span></div>
     <div class="stat-value">{{ data.stats.experiments }}<small>次</small></div>
-    <div class="stat-foot"><span class="up">{{ data.experiments[0].folds if data.experiments else 0 }} 折 LOSO</span><span>·</span><span>{{ data.stats.tests }} 项测试通过</span></div>
+    <div class="stat-foot"><span class="up">{{ data.experiments[0].folds if data.experiments else 0 }} 折 LOSO</span><span>·</span><span>实验记录可追溯</span></div>
   </article>
 </div>
 

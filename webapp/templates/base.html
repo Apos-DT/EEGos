@@ -8,8 +8,10 @@
   <title>{% block title %}{{ page_title }} · {{ app_name }}{% endblock %}</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230d3b4f'/%3E%3Cpath d='M10 34h8l4-12 7 24 5-18 4 6h16' fill='none' stroke='%235eead4' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/ui.css') }}">
 </head>
 <body data-page="{{ page }}">
+<a class="skip-content" href="#mainContent">跳到页面内容</a>
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="/" aria-label="返回工作台">
@@ -29,7 +31,7 @@
       {% for group in nav_groups %}
       <div class="nav-label {% if not loop.first %}nav-label-gap{% endif %}">{{ group.label }}</div>
       {% for item in group['items'] %}
-      <a class="nav-item {% if page == item.key %}active{% endif %}" href="{{ item.href }}">
+      <a class="nav-item {% if page == item.key %}active{% endif %}" href="{{ item.href }}" {% if page == item.key %}aria-current="page"{% endif %}>
         {{ icon(item.icon, 19) }}<span>{{ item.label }}</span>
         {% if page == item.key %}<i class="nav-dot"></i>{% endif %}
       </a>
@@ -63,7 +65,7 @@
   <div class="main-shell">
     <header class="topbar">
       <div class="topbar-left">
-        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="打开导航">{{ icon('grid', 20) }}</button>
+        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="打开导航" aria-controls="sidebar" aria-expanded="false">{{ icon('grid', 20) }}</button>
         <div class="crumbs">
           <span class="crumb-root">EEG-EmoStudio</span>
           <span class="crumb-sep">/</span>
@@ -81,10 +83,11 @@
       </div>
     </header>
 
-    <main class="content">
+    <main class="content" id="mainContent">
       <div class="page-head">
         <div>
           <h1 class="page-title">{{ page_title }}</h1>
+          {% if page_description %}<p class="page-description">{{ page_description }}</p>{% endif %}
         </div>
         <div class="page-actions">{% block actions %}{% endblock %}</div>
       </div>

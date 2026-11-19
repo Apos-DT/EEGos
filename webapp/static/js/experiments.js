@@ -8,6 +8,7 @@
     const experiments = JSON.parse(payload.textContent);
     const rows = experiments
       .filter((item) => item.accuracy !== null && item.accuracy !== undefined)
+      .sort((a, b) => b.accuracy - a.accuracy)
       .slice(0, 8)
       .map((item) => ({
         label: item.label.length > 22 ? `${item.label.slice(0, 22)}…` : item.label,

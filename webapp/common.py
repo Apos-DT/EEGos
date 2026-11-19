@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingRes
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from .content import APP_NAME, APP_SUBTITLE, APP_VERSION, DOCS, NAV, NAV_GROUPS, PAGE_META
+from .content import APP_NAME, APP_SUBTITLE, APP_VERSION, DOCS, NAV, NAV_GROUPS, PAGE_META, PAGE_DESCRIPTIONS
 from .surveys import load_survey
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -61,6 +61,7 @@ def render(request: Request, page: str, template: str, **context: Any) -> HTMLRe
             "request": request,
             "page": page,
             "page_title": PAGE_META.get(page, "工作台"),
+            "page_description": PAGE_DESCRIPTIONS.get(page, ""),
             "now": datetime.now(),
         }
     )

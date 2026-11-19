@@ -9,7 +9,7 @@
 {% block content %}
 <div class="exp-hero">
   <div class="exp-card">
-    <div class="name">最佳运行</div>
+    <div class="name">最高准确率记录</div>
     <div class="sub">{% if data.best %}{{ data.best.label }}{% else %}暂无实验{% endif %}</div>
     <div class="score"><strong>{{ data.best.accuracy|pct if data.best else '—' }}</strong><span>Accuracy</span></div>
     <div class="bar"><span style="width:{{ (data.best.accuracy * 100) if data.best else 0 }}%"></span></div>
@@ -17,23 +17,23 @@
   </div>
   <div class="exp-card">
     <div class="name">实验总数</div>
-    <div class="sub">所有运行均保留指标、配置与检查点</div>
+    <div class="sub">集中管理训练结果与实验报告</div>
     <div class="score"><strong>{{ data.count }}</strong><span>runs</span></div>
-    <div class="bar"><span style="width:{{ [data.count * 12, 100]|min }}%"></span></div>
-    <div class="meta"><span>LOSO / 被试依赖</span><span>本地保存</span></div>
+
+    <div class="meta"><span>跨被试 / 跨会话 / 被试依赖</span><span>本地保存</span></div>
   </div>
   <div class="exp-card">
     <div class="name">评估纪律</div>
     <div class="sub">跨被试结果必须来自折外预测</div>
     <div class="score"><strong>OOF</strong><span>汇总方式</span></div>
-    <div class="bar"><span style="width:100%"></span></div>
+
     <div class="meta"><span>被试隔离</span><span>训练折内标准化</span></div>
   </div>
 </div>
 
 <div class="layout-2" style="margin-top:16px">
   <section class="panel">
-    <div class="panel-head"><div><h2 class="panel-title">运行对比</h2><p class="panel-sub">按 Accuracy 降序；不同数据版本不应直接混合比较</p></div></div>
+    <div class="panel-head"><div><h2 class="panel-title">运行对比</h2><p class="panel-sub">按 Accuracy 浏览记录；不同数据、协议与标签预算的结果不用于直接排名</p></div></div>
     <div id="experimentChart" class="chart-wrap"></div>
   </section>
   <section class="panel">
@@ -55,6 +55,7 @@
     <div class="chips">
       <button class="chip active" data-filter="all">全部</button>
       <button class="chip" data-filter="loso">LOSO</button>
+      <button class="chip" data-filter="cross-session">跨会话</button>
       <button class="chip" data-filter="subject-dependent">被试依赖</button>
     </div>
     <span class="table-count" id="expCount">{{ data.count }} 次</span>

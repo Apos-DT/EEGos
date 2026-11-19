@@ -201,12 +201,15 @@
     const close = () => {
       sidebar && sidebar.classList.remove("open");
       scrim && scrim.classList.remove("show");
+      toggle && toggle.setAttribute("aria-expanded", "false");
     };
     if (toggle) toggle.addEventListener("click", () => {
       sidebar.classList.toggle("open");
       scrim.classList.toggle("show");
+      toggle.setAttribute("aria-expanded", String(sidebar.classList.contains("open")));
     });
     if (scrim) scrim.addEventListener("click", close);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape" && sidebar?.classList.contains("open")) { close(); toggle?.focus(); } });
     $$(".nav-item").forEach((item) => item.addEventListener("click", close));
 
     // Mark API availability without blocking the page.
