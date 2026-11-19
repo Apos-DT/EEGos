@@ -2,80 +2,103 @@
 {% from "macros.html" import icon, badge, job_console %}
 
 {% block actions %}
+  <a class="btn btn-soft" href="#backgroundTraining">{{ icon('activity', 15) }} 后台监控</a>
   <a class="btn btn-soft" href="/experiments">{{ icon('activity', 15) }} 实验记录</a>
-  <button class="btn btn-primary" id="topTrain">{{ icon('play', 15) }} 开始训练</button>
+  <button class="btn btn-primary" id="topTrain">{{ icon('play', 15) }} 启动实验</button>
 {% endblock %}
 
 {% block content %}
 <div class="training-layout">
   <section class="panel training-form">
-    <div class="panel-head"><div><h2 class="panel-title">训练配置</h2><p class="panel-sub">固定种子、训练折内标准化、被试隔离</p></div><span class="badge badge-teal">LOSO</span></div>
+    <div class="panel-head"><div><h2 class="panel-title">新建训练实验</h2><p class="panel-sub">选择方法，配置数据与评估范围</p></div></div>
     <div class="panel-body">
       <form id="trainingForm">
-        <div class="field mb-3">
-          <label for="datasetSelect">特征数据集</label>
-          <select class="select" id="datasetSelect" required>
-            {% for ds in datasets %}
-            <option value="{{ ds.id }}" data-samples="{{ ds.n_samples }}" data-source="{{ ds.source }}" {% if ds.id == selected_dataset %}selected{% endif %}>{{ ds.file }} · {{ ds.n_samples }}×{{ ds.n_channels }}×{{ ds.n_features }}{% if ds.source %} · {{ ds.source }}{% endif %}</option>
-            {% endfor %}
-          </select>
-          {% if not datasets %}<div class="hint" style="color:#b42318">还没有可训练数据集，请先到“数据集”上传或提取特征。</div>{% endif %}
-          <div class="hint" id="datasetHint">SEED-IV 有 37,575 个窗口；首次跑全量 LOSO 建议先用 MLP / 15 epochs 做基线。</div>
-        </div>
-
-        <div class="field mb-3">
-          <label>模型</label>
+        <section class="training-step">
+          <h3>1 · 选择方法</h3>
           <div class="model-grid">
-            {% for model in models %}
-            <label class="model-card {% if model.key == 'eegnet' %}disabled{% endif %}" title="{{ model.desc }}">
-              <input type="radio" name="model" value="{{ model.key }}" {% if model.key == 'dualview' %}checked{% endif %} {% if model.key == 'eegnet' %}disabled{% endif %}>
-              <div class="model-inner">
-                <div class="model-head"><span class="model-name">{{ model.name }}</span><span class="model-tag">{{ model.tag }}</span></div>
-                <div class="model-desc">{{ model.desc }}</div>
-                <div class="model-meta">{{ model.meta }}</div>
-              </div>
-            </label>
+            <label class="model-card"><input type="radio" name="model" value="dda" {% if not request.query_params.get('dataset') %}checked{% endif %}><div class="model-inner"><div class="model-head"><span class="model-name">DDA</span><span class="model-tag">域适配</span></div><div class="model-desc">动态对齐源域与目标域，支持 UDDA / SDDA。</div><div class="model-meta">论文复现 · SEED-IV · MLP 骨干</div></div></label>
+            {% for model in models if model.key != 'eegnet' %}
+            <label class="model-card"><input type="radio" name="model" value="{{ model.key }}" {% if model.key == 'dualview' and request.query_params.get('dataset') %}checked{% endif %}><div class="model-inner"><div class="model-head"><span class="model-name">{{ model.name }}</span><span class="model-tag">{{ model.tag }}</span></div><div class="model-desc">{{ model.desc }}</div><div class="model-meta">{{ model.meta }}</div></div></label>
             {% endfor %}
           </div>
-        </div>
-
-        <div class="field mb-3">
-          <label>评估设置</label>
-          <div class="segmented">
-            <label><input type="radio" name="setting" value="loso" checked><span>跨被试 LOSO</span></label>
-            <label><input type="radio" name="setting" value="subject-dependent"><span>被试依赖</span></label>
-          </div>
-          <div class="hint">跨被试：每折留一名被试；验证集只来自训练被试。被试依赖仅作上界参考。</div>
-        </div>
-
-        <div class="form-grid">
-          <div class="field"><label for="epochs">最大轮数</label><input class="input" id="epochs" type="number" min="1" max="300" value="40"></div>
-          <div class="field"><label for="batchSize">Batch size</label><input class="input" id="batchSize" type="number" min="1" max="512" value="32"></div>
-          <div class="field"><label for="learningRate">学习率</label><input class="input" id="learningRate" type="number" step="0.0001" value="0.001"></div>
-          <div class="field"><label for="seed">随机种子</label><input class="input" id="seed" type="number" min="0" value="42"></div>
-          <div class="field"><label for="hidden">隐层维度</label><input class="input" id="hidden" type="number" min="4" max="256" value="32"></div>
-          <div class="field"><label for="dropout">Dropout</label><input class="input" id="dropout" type="number" step="0.05" min="0" max="0.9" value="0.25"></div>
-          <div class="field"><label for="prototypes">每类原型数</label><input class="input" id="prototypes" type="number" min="1" max="12" value="2"><div class="hint">仅 DualView 生效；K=1 即单原型消融。</div></div>
-          <div class="field"><label for="protoWeight">原型损失权重</label><input class="input" id="protoWeight" type="number" step="0.01" min="0" max="10" value="0.1"></div>
-        </div>
-
-        <div class="form-actions mt-4">
-          <button class="btn btn-primary" type="submit" id="trainSubmit" {% if not datasets %}disabled{% endif %}>{{ icon('play', 15) }} 开始训练</button>
-          <button class="btn btn-soft" type="button" id="quickDemo" {% if not datasets %}disabled{% endif %}>合成数据快跑</button>
-        </div>
-        <div class="form-note mt-3">{{ icon('info', 14) }} <span>训练任务在后台运行，可离开页面；日志与指标会写入 <span class="mono">artifacts/experiments/</span>。</span></div>
+          <p class="hint" id="methodHint"></p>
+        </section>
+        <fieldset id="standardConfig" hidden disabled>
+          <section class="training-step">
+            <h3>2 · 选择数据</h3>
+            <div class="field"><label for="datasetSelect">特征数据集</label><select class="select" id="datasetSelect" required>
+              {% for ds in datasets %}<option value="{{ ds.id }}" data-samples="{{ ds.n_samples }}" data-source="{{ ds.source }}" {% if ds.id == selected_dataset %}selected{% endif %}>{{ ds.file }} · {{ ds.n_samples }}×{{ ds.n_channels }}×{{ ds.n_features }}{% if ds.source %} · {{ ds.source }}{% endif %}</option>{% endfor %}
+            </select><div class="hint" id="datasetHint"></div></div>
+            {% if not datasets %}<p class="hint">尚无特征数据集。请先到<a href="/datasets">数据集</a>上传或提取特征。</p>{% endif %}
+          </section>
+          <section class="training-step">
+            <h3>3 · 评估协议</h3>
+            <div class="field"><label for="standardSetting">数据划分</label><select class="select" id="standardSetting"><option value="loso">跨被试 LOSO</option><option value="subject-dependent">被试依赖</option></select><div class="hint">LOSO 每折留一名被试测试，验证集来自训练被试。被试依赖划分只作上界参考。</div></div>
+          </section>
+          <section class="training-step">
+            <h3>4 · 训练参数</h3>
+            <div class="form-grid">
+              <div class="field"><label for="epochs">最大轮数</label><input class="input" id="epochs" type="number" min="1" max="300" value="40" required></div>
+              <div class="field"><label for="seed">随机种子</label><input class="input" id="seed" type="number" min="0" max="2147483647" value="42" required></div>
+            </div>
+            <details class="training-advanced"><summary>高级参数 · 优化器与模型结构</summary><div class="form-grid mt-3">
+              <div class="field"><label for="batchSize">Batch size</label><input class="input" id="batchSize" type="number" min="1" max="512" value="32" required></div>
+              <div class="field"><label for="learningRate">学习率</label><input class="input" id="learningRate" type="number" step="any" min="0.00000001" max="1" value="0.001" required></div>
+              <div class="field"><label for="hidden">隐层维度</label><input class="input" id="hidden" type="number" min="4" max="256" value="32" required></div>
+              <div class="field"><label for="dropout">Dropout</label><input class="input" id="dropout" type="number" step="any" min="0" max="0.9" value="0.25" required></div>
+              <div class="field" data-dualview><label for="prototypes">每类原型数</label><input class="input" id="prototypes" type="number" min="1" max="12" value="2" required></div>
+              <div class="field" data-dualview><label for="protoWeight">原型损失权重</label><input class="input" id="protoWeight" type="number" step="any" min="0" max="10" value="0.1" required></div>
+            </div></details>
+          </section>
+        </fieldset>
+        <fieldset id="ddaConfig">
+          <section class="training-step"><h3>2 · 选择数据</h3><div class="training-dataset"><strong>SEED-IV · 官方 DE 特征</strong><p>15 名被试 · 3 个会话 · 4 类情绪</p><span class="hint">62 通道 × 5 频段 · 4 秒窗口 · de_LDS 平滑特征</span></div><div class="hint">当前 DDA 适配器支持本机 SEED-IV。数据文件与划分信息随报告归档。</div></section>
+          <section class="training-step"><h3>3 · 适配与评估</h3>
+            <div class="field mb-3"><label for="ddaAlgorithm">DDA 变体</label><select class="select" id="ddaAlgorithm"><option value="UDDA">UDDA · 无监督域适配</option><option value="SDDA">SDDA · 半监督域适配</option></select><div class="hint" id="ddaAlgorithmHint"></div></div>
+            <div class="field mb-3"><label for="ddaSetting">评估协议</label><select class="select" id="ddaSetting"><option value="cross-subject">跨被试 · 会话内留一被试</option><option value="cross-session">跨会话 · 留一完整会话</option></select></div>
+            <div class="form-grid">
+              <div class="field"><label for="ddaSubject">目标被试</label><select class="select" id="ddaSubject"><option value="">全部被试</option>{% for n in range(1, 16) %}<option value="S{{ '%02d'|format(n) }}">S{{ '%02d'|format(n) }}</option>{% endfor %}</select></div>
+              <div class="field"><label for="ddaSession">目标会话</label><select class="select" id="ddaSession"><option value="">全部会话</option>{% for n in range(1, 4) %}<option value="{{ n }}">Session {{ n }}</option>{% endfor %}</select></div>
+              <div class="field"><label for="ddaMaxFolds">运行范围</label><select class="select" id="ddaMaxFolds"><option value="1">先跑 1 折 · 流程检查</option><option value="0">运行全部所选折</option></select></div>
+              <div class="field" id="ddaLabelField" hidden><label for="ddaLabeledTrials">每名目标被试有标签 trial 数</label><input class="input" id="ddaLabeledTrials" type="number" min="1" max="23" value="4" required disabled><div class="hint">使用前 N 个 trial；这些样本从测试评分中排除。</div></div>
+            </div><div class="hint mt-3" id="ddaFoldHint" aria-live="polite"></div>
+          </section>
+          <section class="training-step"><h3>4 · 训练参数</h3>
+            <div class="form-grid"><div class="field"><label for="ddaEpochs">训练轮数</label><input class="input" id="ddaEpochs" type="number" min="1" max="600" value="600" required></div><div class="field"><label for="ddaSeed">随机种子</label><input class="input" id="ddaSeed" type="number" min="0" max="2147483647" value="42" required></div></div>
+            <details class="training-advanced"><summary>高级参数 · 论文默认配置</summary><div class="form-grid mt-3">
+              <div class="field"><label for="ddaBatchSize">Batch size</label><input class="input" id="ddaBatchSize" type="number" min="2" max="512" value="30" required></div>
+              <div class="field"><label for="ddaLearningRate">学习率 · SGD</label><input class="input" id="ddaLearningRate" type="number" step="any" min="0.00000001" max="1" value="0.001" required></div>
+              <div class="field"><label for="ddaBeta">对齐损失权重 β</label><input class="input" id="ddaBeta" type="number" step="any" min="0" max="10" value="0.3" required></div>
+              <div class="field"><label for="ddaThreshold">伪标签置信阈值</label><input class="input" id="ddaThreshold" type="number" step="any" min="0" max="1" value="0.75" required></div>
+              <div class="field"><label for="ddaEvalInterval">评估间隔 · epoch</label><input class="input" id="ddaEvalInterval" type="number" min="1" max="600" value="10" required></div>
+            </div></details>
+          </section>
+        </fieldset>
+        <div class="training-review" aria-live="polite"><strong>本次实验</strong><p id="experimentSummary"></p></div>
+        <div class="form-actions mt-4"><button class="btn btn-primary" type="submit" id="trainSubmit">{{ icon('play', 15) }} 启动实验</button><button class="btn btn-soft" type="button" id="quickDemo" hidden>合成数据快跑</button></div>
+        <p class="hint mt-3">后台训练可持续运行。日志、参数与结果归档后可在“实验记录”查看。</p>
       </form>
     </div>
   </section>
 
   <div class="stack">
+    <section class="panel" id="backgroundTraining" aria-label="本机训练监控">
+      <div class="panel-head"><div><h2 class="panel-title">本机训练监控</h2><p class="panel-sub">本项目的网页任务与独立训练进程 · 每 5 秒刷新</p></div><span class="badge badge-neutral" id="monitorCount">连接中</span></div>
+      <div class="panel-body">
+        <p class="hint" id="monitorStatus" role="status">正在读取本机进程与 GPU 状态…</p>
+        <div id="monitorGPU" class="monitor-gpu"></div>
+        <div id="monitorTasks" class="monitor-tasks"></div>
+        <details class="mt-3" id="monitorRecent"><summary>最近结束的任务</summary><div id="monitorHistory" class="monitor-tasks mt-3"></div></details>
+      </div>
+    </section>
     <section class="panel">
       <div class="panel-head">
-        <div><h2 class="panel-title">运行状态</h2><p class="panel-sub" id="runHint">等待提交训练任务</p></div>
+        <div><h2 class="panel-title">本次提交</h2><p class="panel-sub" id="runHint">等待提交训练任务</p></div>
         <span class="badge badge-neutral" id="runState">IDLE</span>
       </div>
       <div class="panel-body" id="trainingIdle">
-        <div class="pipeline">
+        <p class="hint" id="ddaIdle" hidden>DDA 任务将读取本机 SEED-IV 特征，按所选协议进行域适配，逐折记录训练日志并生成指标与报告。</p>
+        <div class="pipeline" id="standardPipeline">
           <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">读取特征与标签</div><div class="pipe-detail">校验形状、类别、被试</div></div><span class="pipe-state">就绪</span></div>
           <div class="pipe-step"><span class="pipe-node">2</span><div><div class="pipe-label">训练折内标准化</div><div class="pipe-detail">验证/测试只 transform</div></div><span class="pipe-state">运行时</span></div>
           <div class="pipe-step"><span class="pipe-node">3</span><div><div class="pipe-label">逐折训练 + 早停</div><div class="pipe-detail">恢复最佳验证权重</div></div><span class="pipe-state">运行时</span></div>
@@ -88,7 +111,7 @@
 
     <section class="panel training-result" id="trainingResult">
       <div class="panel-head">
-        <div><h2 class="panel-title">本次结果</h2><p class="panel-sub">折外预测汇总；合成数据仅用于软件验收</p></div>
+        <div><h2 class="panel-title">本次结果</h2><p class="panel-sub">本次训练的测试指标；合成数据仅用于软件验收</p></div>
         <a class="btn btn-soft btn-sm" id="openReport" href="#" target="_blank">{{ icon('external', 13) }} 完整报告</a>
       </div>
       <div class="panel-body">
@@ -139,4 +162,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/training.js') }}"></script>
+<script src="{{ url_for('static', path='js/training_monitor.js') }}"></script>
 {% endblock %}

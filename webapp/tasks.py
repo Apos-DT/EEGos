@@ -34,8 +34,16 @@ def _run_cli(job: Job, args: list[str]) -> int:
         env=env,
     )
     assert process.stdout is not None
-    for line in process.stdout:
-        manager.log(job, line)
+    output = Path(args[args.index("--out") + 1]) if "--out" in args else None
+    manager.bind_process(job, process.pid, output)
+    if job.kind == "train" and output:
+        with (output / "training.log").open("w", encoding="utf-8", buffering=1) as log:
+            for line in process.stdout:
+                log.write(line)
+                manager.log(job, line)
+    else:
+        for line in process.stdout:
+            manager.log(job, line)
     code = process.wait()
     if code != 0:
         raise RuntimeError(f"命令退出码 {code}")

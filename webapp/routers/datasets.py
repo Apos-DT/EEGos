@@ -81,6 +81,13 @@ async def experiments_page(request: Request) -> HTMLResponse:
 # --- 只读查询 -------------------------------------------------------------
 
 
+@router.get("/api/training/monitor")
+async def training_monitor() -> dict[str, Any]:
+    from ..training_monitor import snapshot
+
+    return await run_in_threadpool(snapshot)
+
+
 @router.get("/api/datasets")
 async def api_datasets() -> dict[str, Any]:
     return {"datasets": await run_in_threadpool(list_feature_datasets)}

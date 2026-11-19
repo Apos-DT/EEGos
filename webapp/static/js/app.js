@@ -84,6 +84,7 @@
       if (Date.now() - started > timeout) {
         clearInterval(timer);
         EEG.toast("任务等待超时，请到“系统状态”查看后台任务。", "error");
+        if (onFail) onFail({ error: "任务状态等待超时，后台任务可能仍在运行。" });
         return;
       }
       try {
@@ -100,6 +101,7 @@
       } catch (error) {
         clearInterval(timer);
         EEG.toast(error.message || "无法读取任务状态", "error");
+        if (onFail) onFail({ error: error.message || "无法读取任务状态" });
       }
     };
     tick();
@@ -120,6 +122,7 @@
       EEG.toast("任务已提交，正在后台运行。", "success", 2600);
       EEG.pollJob(job.id, {
         consoleId,
+        timeout: options.pollTimeout,
         onSuccess: (finished) => {
           EEG.setBusy(button, false);
           if (successMessage) EEG.toast(successMessage, "success");
@@ -134,6 +137,7 @@
     } catch (error) {
       EEG.setBusy(button, false);
       EEG.toast(error.message || "提交失败", "error", 6000);
+      if (onFail) onFail({ error: error.message || "提交失败" });
     }
   };
 

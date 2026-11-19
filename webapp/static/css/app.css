@@ -863,7 +863,7 @@ body { overflow-x: hidden; }
 @media (max-width: 920px) {
   .layout-2, .layout-2-wide, .layout-3 { grid-template-columns: minmax(0, 1fr); }
 }
-[hidden] { display: none !important; }
+.training-layout [hidden] { display: none !important; }
 @media (max-width: 560px) {
   .segmented span { font-size: 9.5px; padding: 0 4px; }
   .training-layout .panel-head { align-items: center; }
@@ -1241,3 +1241,48 @@ body { overflow-x: hidden; }
 .review-head .mono { color:var(--muted); }
 .public-review .data { width:100%; font-size:10.5px; min-width:0; }
 .public-review .data thead th { font-size:10px; }
+[hidden] { display: none !important; }
+
+/* Training experiment builder */
+.training-form .model-name { font-size: 14px; }
+.training-form .model-desc { font-size: 12px; line-height: 1.6; }
+.training-form .model-meta { font-size: 11px; }
+.training-form .model-tag { font-size: 10px; }
+.training-form .hint { font-size: 12px; line-height: 1.7; }
+.training-layout { grid-template-columns: minmax(420px, 1.05fr) minmax(0, 1fr); }
+.training-form { position: static; }
+.training-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.training-step { padding-bottom: 22px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+.training-step h3 { font-size: 14px; margin: 0 0 14px; color: var(--teal, #0c7368); }
+.training-advanced { margin-top: 14px; }
+.training-advanced summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 8px 0; }
+.training-dataset, .training-review { padding: 14px; background: #f3f8fa; border: 1px solid #dde9ef; border-radius: 10px; }
+.training-dataset p, .training-review p { margin: 6px 0 0; line-height: 1.7; }
+.training-review { border-color: #b9dbd5; background: #f3fbf8; font-size: 12px; }
+.model-card input:focus-visible + .model-inner { outline: 2px solid #0c7368; outline-offset: 2px; }
+@media (max-width: 1100px) { .training-layout { grid-template-columns: 1fr; } }
+
+/* Local training monitor */
+#backgroundTraining { scroll-margin-top: 85px; }
+.monitor-gpu { padding:12px; background:#f1f8f6; border-radius:10px; margin-bottom:14px; }
+.monitor-device strong { font-size:12px; }
+.monitor-device { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 18px; }
+.monitor-device + .monitor-device { margin-top:16px; }
+.gpu-device-head { display:flex; flex-direction:column; gap:4px; flex:1 1 160px; }
+.gpu-temperature { color:#69807b; font-size:11px; }
+.gpu-gauges { display:flex; align-items:center; gap:18px; }
+.gpu-gauge { display:flex; align-items:center; gap:7px; --ring-color:#179783; }
+.gpu-gauge-memory { --ring-color:#598fbb; }
+.gpu-gauge-ring { width:36px; height:36px; flex:none; border-radius:50%; display:grid; place-items:center; position:relative; isolation:isolate; color:#24483f; font-size:10px; font-weight:650; font-variant-numeric:tabular-nums; background:conic-gradient(var(--ring-color) var(--usage,0%),#dce9e5 0); }
+.gpu-gauge-ring::before { content:""; position:absolute; inset:3px; border-radius:50%; background:#f1f8f6; z-index:-1; }
+.gpu-gauge-caption { display:flex; flex-direction:column; gap:3px; font-size:11px; color:#526b66; }
+.gpu-gauge-detail { font-size:10px; color:#69807b; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.monitor-tasks { display:grid; gap:12px; }
+.monitor-task { border:1px solid var(--line); border-radius:10px; padding:14px; min-width:0; }
+.monitor-task-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
+.monitor-task-head strong { font-size:13px; }
+.monitor-run-id { font-size:10px; overflow-wrap:anywhere; }
+.monitor-task progress { width:100%; height:10px; accent-color:#0c7368; }
+.monitor-task details, #monitorRecent summary { font-size:12px; cursor:pointer; }
+.monitor-log { white-space:pre-wrap; overflow-wrap:anywhere; max-height:240px; overflow:auto; background:#102b3e; color:#d7ece9; padding:12px; border-radius:8px; font:11px/1.7 Consolas,monospace; }
+.monitor-error { color:#b42318; font-size:12px; overflow-wrap:anywhere; }
