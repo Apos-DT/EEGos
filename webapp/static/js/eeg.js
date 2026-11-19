@@ -106,7 +106,7 @@
       <div class="eeg-metric"><small>输入采样率</small><strong>${result.input_fs} Hz</strong></div>
       <div class="eeg-metric"><small>输出采样率</small><strong>${result.output_fs} Hz</strong></div>
       <div class="eeg-metric"><small>事件数</small><strong>${result.n_events}</strong></div>
-      <div class="eeg-metric"><small>峰峰值</small><strong>${after.peak_abs_uv ?? "—"} µV</strong></div>
+      <div class="eeg-metric"><small>峰值幅度</small><strong>${after.peak_abs_uv ?? "—"} µV</strong></div>
       <div class="eeg-metric"><small>平直通道</small><strong>${after.flat_channels ?? "—"}</strong></div>
       <div class="eeg-metric"><small>训练 trial</small><strong>${result.training?.n_trials ?? 0}</strong></div>`;
     const links = [
@@ -120,7 +120,7 @@
       `<a class="file-pill" href="/files/eeg/${encodeURIComponent(uploadId)}/${name}" target="_blank">${iconText(name)}<span>${label}</span></a>`
     ).join("") + (result.training
       ? `<a class="btn btn-primary btn-sm" href="/training">去训练 →</a><span class="hint">单个 .set = 单个被试；LOSO 需多名被试的特征集。</span>`
-      : `<span class="hint">没有事件，未生成可训练特征集。</span>`);
+      : `<span class="hint">未产生有效训练片段；请检查事件映射、边界与质量阈值。</span>`);
     $("eegResult").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 

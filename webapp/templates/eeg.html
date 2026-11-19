@@ -7,6 +7,62 @@
 {% endblock %}
 
 {% block content %}
+<div class="tabs eeg-source-tabs"><button class="tab active" type="button" data-eeg-source="seed">SEED-IV 原始 MAT</button><button class="tab" type="button" data-eeg-source="eeglab">EEGLAB .set / .zip</button></div>
+<div id="seedRawWorkspace">
+  <div class="raw-workspace-grid">
+    <section class="panel"><div class="panel-head"><div><h2>1 · 选择本机原始数据</h2><p>直接读取 data/SEED_IV/eeg_raw_data，逐 trial 处理，保留官方标签与原始边界。</p></div><span class="badge badge-teal" id="rawCatalogCount">读取中</span></div>
+      <div class="panel-body">
+        <div class="field"><label>会话</label><div class="raw-session-picks">{% for n in range(1,4) %}<label><input type="checkbox" name="rawSession" value="{{ n }}" {% if n==1 %}checked{% endif %}> Session {{ n }}</label>{% endfor %}</div></div>
+        <div class="raw-subject-head"><strong>被试</strong><div><button class="btn btn-soft btn-sm" type="button" id="rawAllSubjects">全选</button><button class="btn btn-soft btn-sm" type="button" id="rawClearSubjects">清空</button></div></div>
+        <div class="raw-subject-picks">{% for n in range(1,16) %}<label><input type="checkbox" name="rawSubject" value="{{ n }}" {% if n==1 %}checked{% endif %}> S{{ '%02d'|format(n) }}</label>{% endfor %}</div>
+        <p class="hint" id="rawScopeHint" aria-live="polite"></p>
+        <button class="btn btn-soft" type="button" id="rawInspect">{{ icon('search',15) }} 检查首个所选文件</button>
+        <div class="hint mt-3">公开 MAT 按官方协议已为 200 Hz；每文件 24 个 trial，62 通道。输入单位需核对，文件本身没有单位字段。</div>
+      </div></section>
+    <section class="panel"><div class="panel-head"><div><h2>原始信号预览</h2><p id="rawInspectInfo">检查文件后显示真实波形与 trial 信息。</p></div></div><div class="panel-body"><div id="rawSignalPreview" class="raw-signal-preview"><div class="empty"><p>选择一个被试与会话，点击检查文件。</p></div></div><p class="hint" id="rawInspectBasis"></p></div></section>
+  </div>
+  <details class="panel mt-4" id="rawTrialDetails" hidden><summary class="raw-detail-summary">文件结构 · 24 个 trial 的形状、时长与标签</summary><div class="table-wrap"><table class="data"><thead><tr><th>变量</th><th>Trial</th><th>形状</th><th>时长</th><th>情绪标签</th></tr></thead><tbody id="rawTrialBody"></tbody></table></div></details>
+  <section class="panel mt-4"><div class="panel-head"><div><h2>2 · 配置处理协议</h2><p>逐 trial 零相位滤波 → 重参考 / 抗混叠重采样 → 质量切窗 → 五频带 DE。保持被试与 trial 边界。</p></div><select class="select raw-preset" id="rawPreset" aria-label="处理预设"><option value="robust">质量控制预设</option><option value="baseline">SEED-IV 频带基线</option></select></div>
+    <form class="panel-body" id="seedRawForm">
+      <div class="form-grid raw-config-grid">
+        <div class="field"><label for="rawFs">输入采样率（Hz）</label><input class="input" id="rawFs" type="number" value="200" min="100" max="5000" required><div class="hint">默认值来自官方发布协议，处理前请核对。</div></div>
+        <div class="field"><label for="rawUnit">输入幅值单位</label><select class="select" id="rawUnit"><option value="uV">µV · 微伏（本机幅值据此解释）</option><option value="V">V · 伏（显式转换为 µV）</option></select></div>
+        <div class="field"><label for="rawTargetFs">输出采样率（Hz）</label><input class="input" id="rawTargetFs" type="number" value="200" min="100" max="5000" required></div>
+        <div class="field"><label for="rawReference">重参考</label><select class="select" id="rawReference"><option value="car">平均参考 · 仅保留通道参与</option><option value="none">保留输入参考</option></select></div>
+        <div class="field"><label for="rawLow">高通截止（Hz）</label><input class="input" id="rawLow" type="number" value="1" min="0.1" max="1" step="0.1" required></div>
+        <div class="field"><label for="rawHigh">低通截止（Hz）</label><input class="input" id="rawHigh" type="number" value="75" min="50" max="200" required></div>
+        <div class="field"><label for="rawNotch">工频陷波（Hz，0 关闭）</label><input class="input" id="rawNotch" type="number" value="50" min="0" max="120" required></div>
+        <div class="field"><label for="rawReject">窗口峰峰值上限（µV，0 关闭）</label><input class="input" id="rawReject" type="number" value="200" min="0" max="2000" required><div class="hint">拒绝污染窗口，保留同一 trial 的其他有效窗口。</div></div>
+        <div class="field"><label for="rawWindow">特征窗口（秒）</label><input class="input" id="rawWindow" type="number" value="4" min="0.5" max="30" step="0.5" required></div>
+        <div class="field"><label for="rawStep">窗口步长（秒）</label><input class="input" id="rawStep" type="number" value="4" min="0.5" max="30" step="0.5" required></div>
+      </div>
+      <details class="training-advanced"><summary>坏导、边界、输出与 ICA 审阅</summary>
+        <div class="form-grid mt-3">
+          <div class="field"><label for="rawBadChannels">人工排除坏导（逗号分隔）</label><input class="input" id="rawBadChannels" placeholder="例如 FP1, FP2"><div class="hint">报告给出通道异常提示；未确认的异常不自动插值或删除。</div></div>
+          <div class="field"><label for="rawFlat">平直通道标准差阈值（µV，0 关闭）</label><input class="input" id="rawFlat" type="number" value="0.1" min="0" max="10" step="0.01" required></div>
+          <div class="field"><label for="rawEdge">每个 trial 两端裁剪（秒）</label><input class="input" id="rawEdge" type="number" value="1" min="0" max="5" step="0.5" required></div>
+          <div class="field"><label for="rawSeed">ICA 随机种子</label><input class="input" id="rawSeed" type="number" value="42" min="0" required></div>
+          <div class="field"><label for="rawICA">ICA</label><select class="select" id="rawICA"><option value="off">关闭</option><option value="review">拟合并保存，供审阅</option><option value="apply">应用已审阅分解，移除指定成分</option></select></div>
+          <div class="field"><label for="rawComponents">ICA 成分数</label><input class="input" id="rawComponents" type="number" value="20" min="2" max="40" required></div>
+          <div class="field" data-ica-apply hidden><label for="rawICAReference">已审阅任务</label><select class="select" id="rawICAReference"><option value="">选择成功的 ICA 审阅任务…</option></select></div>
+          <div class="field" data-ica-apply hidden><label for="rawExclude">移除成分（0 起始，逗号分隔）</label><input class="input" id="rawExclude" placeholder="例如 0, 3"></div>
+        </div>
+        <p class="hint">ICA 限单被试、单会话。拟合使用通过质量检查的窗口与 1 Hz 高通副本；应用时校验源文件 SHA256 和预处理参数，并复用原分解。没有专用 EOG/ECG 时不自动判定伪迹成分。</p>
+        <label class="checkline mt-3"><input type="checkbox" id="rawSaveWindows"> 同时保存清洗后的 raw.npz 窗口（批量任务可能占用较大磁盘空间）</label>
+      </details>
+      <div class="raw-method-note hint mt-3">五频带：1–4 / 4–8 / 8–14 / 14–31 / 31–50 Hz。输出为重新计算的 DE，未应用官方 LDS 平滑，不应与官方 de_LDS 特征混为同一版本。</div>
+      <p class="hint" id="rawRunSummary" aria-live="polite"></p>
+      <div class="form-error" id="rawError" hidden></div>
+      <button class="btn btn-primary mt-3" id="rawRun" type="submit">{{ icon('play',15) }} 开始原始 EEG 处理</button>
+    </form>
+  </section>
+  {{ job_console('rawEEGConsole','原始 EEG 处理任务') }}
+  <section class="panel mt-4" id="rawResults" hidden><div class="panel-head"><div><h2>3 · 质量检查与处理结果</h2><p id="rawResultSummary"></p></div><a class="btn btn-primary btn-sm" id="rawGoTrain" href="/training">使用特征训练</a></div><div class="panel-body"><div id="rawResultMetrics" class="raw-result-metrics"></div><div class="figure-grid mt-3"><figure class="raw-result-plot"><img id="rawWaveform" alt="首个 trial 处理前后波形" class="raw-result-image"><figcaption>首个 trial 前 10 秒 · 原始 / 处理后波形（µV）</figcaption></figure><figure class="raw-result-plot"><img id="rawSpectrum" alt="首个 trial 处理前后功率谱" class="raw-result-image"><figcaption>首个 trial · 通道平均 Welch 功率谱</figcaption></figure></div><div id="rawArtifacts" class="raw-artifacts mt-3"></div><div id="rawICAResult" class="mt-3"></div><details class="mt-3"><summary>逐 trial 保留与拒绝统计</summary><div class="table-wrap"><table class="data"><thead><tr><th>会话 / 被试</th><th>Trial</th><th>情绪</th><th>候选窗口</th><th>保留</th><th>拒绝</th></tr></thead><tbody id="rawQualityBody"></tbody></table></div></details></div></section>
+  <section class="panel mt-4"><div class="panel-head"><div><h2>处理记录</h2><p>参数、数据版本、质量统计与起止时间独立归档。</p></div></div><div class="panel-body" id="rawHistory"></div></section>
+  <details class="raw-references mt-3"><summary>处理依据与方法边界</summary><p>采用可审计的信号处理与逐窗口质量控制。ASR 需要校准，AutoReject 插值需要可靠电极坐标，ICLabel 有训练预处理条件；本流程不自动套用这些步骤。</p><a href="https://bcmi.sjtu.edu.cn/home/seed/seed-iv.html" target="_blank" rel="noreferrer">SEED-IV 官方协议</a> · <a href="https://mne.tools/stable/auto_tutorials/preprocessing/40_artifact_correction_ica.html" target="_blank" rel="noreferrer">MNE ICA</a> · <a href="https://eeglab.org/plugins/clean_rawdata/" target="_blank" rel="noreferrer">EEGLAB ASR</a></details>
+</div>
+<div id="eeglabWorkspace" hidden>
+
 <div class="eeg-layout">
   <section class="panel">
     <div class="panel-head">
@@ -161,8 +217,10 @@
   <div class="empty" style="padding:28px"><div class="empty-icon">{{ icon('waves', 26) }}</div><p>还没有 EEG 文件。先上传一个 EEGLAB .set 或 zip。</p></div>
   {% endif %}
 </section>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/eeg.js') }}"></script>
+<script src="{{ url_for('static', path='js/raw_eeg.js') }}"></script>
 {% endblock %}

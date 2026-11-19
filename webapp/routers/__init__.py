@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import core, datasets, dda, experiment, files, media, prep, public_survey, survey
+from . import core, datasets, dda, experiment, files, media, prep, public_survey, raw_eeg, survey
 
 # 顺序有意义：先注册的优先匹配。同一前缀下「字面量」路由必须早于「参数化」路由。
 ALL_ROUTERS: list[APIRouter] = [
@@ -30,6 +30,7 @@ ALL_ROUTERS: list[APIRouter] = [
     media.router,
     prep.router,
     datasets.router,
+    raw_eeg.router,
     dda.router,
     files.router,
 ]

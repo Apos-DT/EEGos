@@ -163,11 +163,16 @@ async def api_eeg_uploads() -> dict[str, Any]:
 @router.post("/api/eeg/process")
 async def api_eeg_process(payload: EEGProcessRequest) -> dict[str, Any]:
     if payload.bandpass_high <= payload.bandpass_low:
-        raise HTTPException(status_code=400, detail="高通必须大于低通")
+        raise HTTPException(status_code=400, detail="低通截止频率必须大于高通截止频率")
     try:
         upload = await run_in_threadpool(resolve_upload, payload.upload_id)
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    output_fs = payload.target_fs or upload["fs"]
+    if payload.bandpass_high >= min(upload["fs"], output_fs) / 2:
+        raise HTTPException(status_code=422, detail="低通截止必须小于输入和输出采样率的 Nyquist 频率")
+    if payload.window > payload.epoch_end - payload.epoch_start:
+        raise HTTPException(status_code=422, detail="DE 窗口不能超过事件分段长度")
     output = output_for(payload.upload_id)
     job = manager.submit(
         "eeg",

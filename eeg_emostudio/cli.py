@@ -20,11 +20,9 @@ from .audit.quality import (
 from .data.manifest import load_features
 from .data.seed_iv import audit_seed_iv, build_seed_iv
 from .data.eeglab import process_eeglab_set
-from .demo import run_demo
 from .pipeline import build_features_from_raw
 from .reporting.figures import plot_confusion_matrix, plot_subject_accuracy
 from .reporting.html import render_loso_report
-from .training.trainer import TrainConfig, run_loso, run_subject_dependent
 
 QUALITY_FILES = {
     "video": "research/quality/video/视频质量排序.csv",
@@ -81,6 +79,8 @@ def _cmd_select(args: argparse.Namespace) -> int:
 
 
 def _cmd_demo(args: argparse.Namespace) -> int:
+    from .demo import run_demo
+
     result = run_demo(
         args.out,
         epochs=args.epochs,
@@ -176,6 +176,8 @@ def _cmd_features(args: argparse.Namespace) -> int:
 
 
 def _cmd_train(args: argparse.Namespace) -> int:
+    from .training.trainer import TrainConfig, run_loso, run_subject_dependent
+
     data = load_features(args.data)
     x, y, subjects = data["x"], data["y"], data["subjects"]
     n_classes = int(y.max()) + 1

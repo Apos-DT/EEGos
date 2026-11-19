@@ -32,6 +32,15 @@ AUDIT_FILES = {
 SELECTION_FILES = {"selected_materials.csv", "selection_summary.json", "selection_report.md"}
 
 EEG_FILES = {
+    "waveform.png": "image/png",
+    "spectrum.png": "image/png",
+    "ica_components.png": "image/png",
+    "review-ica.fif": "application/octet-stream",
+    "ica_profile.json": "application/json",
+    "features.manifest.json": "application/json",
+    "window_index.npz": "application/octet-stream",
+    "channel_qc.csv": "text/csv",
+    "report.html": "text/html",
     "eeg_clean.npz": "application/octet-stream",
     "eeg_preview.png": "image/png",
     "eeg_report.json": "application/json",

@@ -31,6 +31,7 @@ from .config import (
     DATA_DIR,
     DELIVERABLES_DIR,
     EXPERIMENTS_DIR,
+    OUTPUT_DIR,
     PROCESSED_DIR,
     QUALITY,
     RAW_DIR,
@@ -402,6 +403,7 @@ def _inspect_feature_npz(path: Path) -> dict[str, Any] | None:
     lambda: PROCESSED_DIR,
     lambda: ARTIFACTS / "demo",
     lambda: EXPERIMENTS_DIR,
+    lambda: OUTPUT_DIR,
 )
 def list_feature_datasets() -> list[dict[str, Any]]:
     candidates: list[Path] = []
@@ -409,6 +411,7 @@ def list_feature_datasets() -> list[dict[str, Any]]:
         if directory.exists():
             candidates.extend(directory.glob("*.npz"))
     candidates.extend((ARTIFACTS / "experiments").glob("*/features.npz"))
+    candidates.extend(OUTPUT_DIR.glob("*/features.npz"))
     seen: set[Path] = set()
     result: list[dict[str, Any]] = []
     for path in candidates:
@@ -457,12 +460,14 @@ def _inspect_raw_npz(path: Path) -> dict[str, Any] | None:
     lambda: RAW_DIR,
     lambda: UPLOAD_DIR,
     lambda: ARTIFACTS / "raw_demo",
+    lambda: OUTPUT_DIR,
 )
 def list_raw_datasets() -> list[dict[str, Any]]:
     candidates: list[Path] = []
     for directory in (RAW_DIR, UPLOAD_DIR, ARTIFACTS / "raw_demo"):
         if directory.exists():
             candidates.extend(directory.glob("*.npz"))
+    candidates.extend(OUTPUT_DIR.glob("*/raw.npz"))
     result = []
     seen: set[Path] = set()
     for path in candidates:

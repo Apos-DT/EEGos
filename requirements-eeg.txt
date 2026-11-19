@@ -1,0 +1,3 @@
+# Optional raw EEG / ICA environment. Core NumPy/SciPy/Matplotlib requirements apply.
+mne==1.13.2
+scikit-learn==1.8.0

@@ -290,7 +290,7 @@ def process_eeglab_set(
         fs=float(clean_fs),
         channel_names=np.asarray(raw.channel_names),
         events=np.asarray([item["type"] for item in raw.events]),
-        event_latencies=np.asarray([item["latency"] for item in raw.events], dtype=np.int64),
+        event_latencies=np.asarray([int(round((item["latency"] - 1) * clean_fs / raw.fs)) + 1 for item in raw.events], dtype=np.int64),
         source=str(source),
     )
     _save_preview(raw.data, clean, raw.fs, clean_fs, out / "eeg_preview.png")
@@ -330,8 +330,8 @@ def process_eeglab_set(
         label = event_map.get(item["type"])
         if label is None:
             continue
-        sample = int(round(item["latency"] * clean_fs / raw.fs)) - 1
-        if sample >= 0:
+        sample = int(round((item["latency"] - 1) * clean_fs / raw.fs))
+        if sample + int(round(epoch_start * clean_fs)) >= 0 and sample + int(round(epoch_end * clean_fs)) <= clean.shape[-1]:
             mapped_events.append((sample, label))
     if mapped_events:
         events = [sample for sample, _ in mapped_events]

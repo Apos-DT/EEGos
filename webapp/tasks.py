@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import AUDIT_DIR, EXPERIMENTS_DIR, PROCESSED_DIR, RAW_DIR, ROOT, SELECTION_DIR
+from .config import AUDIT_DIR, EXPERIMENTS_DIR, PROCESSED_DIR, RAW_DIR, ROOT, SELECTION_DIR, invalidate
 from .jobs import Job, manager
 from .services import _read_json
 
@@ -159,8 +159,9 @@ def eeglab_task(
     window: float = 1.0,
     ica: bool = False,
 ) -> dict[str, Any]:
+    eeg_python = os.environ.get("EEG_PROCESS_PYTHON", str(ROOT / ".venv-eeg" / "Scripts" / "python.exe"))
     args = [
-        PYTHON, "-m", "eeg_emostudio", "eeglab",
+        eeg_python if Path(eeg_python).is_file() else PYTHON, "-m", "eeg_emostudio", "eeglab",
         "--input", str(set_path),
         "--out", str(output),
         "--subject", subject,
@@ -177,6 +178,7 @@ def eeglab_task(
     if ica:
         args.append("--ica")
     _run_cli(job, args)
+    invalidate("feature_datasets", "raw_datasets")
     report = _read_json(output / "eeg_report.json", {}) or {}
     training = report.get("training") or {}
     copied: dict[str, str] = {}
