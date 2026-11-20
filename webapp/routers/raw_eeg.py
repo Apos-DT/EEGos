@@ -17,6 +17,7 @@ from ..config import ROOT, SEED_IV_DIR, OUTPUT_DIR, invalidate
 from ..jobs import manager
 from ..common import job_payload
 from ..services import _id_for
+from ..record_store import managed
 
 router=APIRouter(prefix="/api/eeg/raw")
 EEG_PYTHON=os.environ.get("EEG_PROCESS_PYTHON",str(ROOT/".venv-eeg"/"Scripts"/"python.exe"))
@@ -75,9 +76,11 @@ async def raw_inspect(session:int=1,subject:int=1):
     except (ValueError,OSError) as exc: raise HTTPException(422,str(exc)) from exc
 
 
-def list_runs():
+@managed("eeg_runs", id_key="run_id", title_key="display_name")
+def list_runs(limit=30):
     runs=[]
-    for path in sorted(OUTPUT_DIR.glob("raw-*/eeg_report.json"),key=lambda p:p.stat().st_mtime,reverse=True)[:30]:
+    paths=sorted(OUTPUT_DIR.glob("raw-*/eeg_report.json"),key=lambda p:p.stat().st_mtime,reverse=True)
+    for path in paths if limit is None else paths[:limit]:
         try:
             r=json.loads(path.read_text(encoding="utf-8"))
             runs.append({k:r.get(k) for k in ("run_id","status","started_at","finished_at","n_samples","n_trials","n_rejected","config","ica","error")})

@@ -177,7 +177,7 @@ def load_manifest(refresh: bool = True) -> dict[str, Any]:
     lambda: list(QUALITY.values()),
     lambda: SELECTED,
 )
-def library_payload() -> dict[str, Any]:
+def _library_payload() -> dict[str, Any]:
     data = load_manifest(refresh=True)
     items = data["items"]
     for item in items:
@@ -188,6 +188,18 @@ def library_payload() -> dict[str, Any]:
             item["preview_url"] = ""
             item["media_url"] = ""
     data["selected_count"] = sum(1 for item in items if item["selected"])
+    return data
+
+
+def library_payload() -> dict[str, Any]:
+    from .record_store import decorate_rows
+    data = _library_payload()
+    data["items"] = decorate_rows("media", data["items"], title_key="display_name")
+    data["selected_count"] = sum(1 for item in data["items"] if item["selected"])
+    for kind in ("video", "audio"):
+        data["counts"][kind] = sum(1 for item in data["items"] if item["modality"] == kind)
+    for flag in ("managed", "available"):
+        data["counts"][flag] = sum(1 for item in data["items"] if item[flag])
     return data
 
 

@@ -43,6 +43,8 @@ from .questionnaire import (
 )
 from .config import IMPORTS_DIR, RESPONSES_DIR, STAGING_DIR, cache_by
 from .surveys import SURVEYS_DIR, _public, _save, load_survey
+from .record_store import managed
+from . import record_store
 
 _LOCK = Lock()
 
@@ -156,6 +158,7 @@ def append_response(record: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
+@managed("responses", id_key="response_id", title_key="display_name")
 def iter_responses(survey_id: str) -> list[dict[str, Any]]:
     path = _responses_path(survey_id)
     if not path.exists():
@@ -173,13 +176,13 @@ def iter_responses(survey_id: str) -> list[dict[str, Any]]:
     return records
 
 
-@cache_by("response_table", lambda: RESPONSES_DIR)
+@cache_by("response_table", lambda: RESPONSES_DIR, lambda: record_store.STORE_DIR / "state.json")
 def response_table(survey_id: str, limit: int = 200) -> dict[str, Any]:
     rows = sorted(iter_responses(survey_id), key=lambda item: item.get("submitted_at", ""), reverse=True)
     return {"total": len(rows), "responses": rows[: max(1, min(limit, 5000))]}
 
 
-@cache_by("total_responses", lambda: RESPONSES_DIR)
+@cache_by("total_responses", lambda: RESPONSES_DIR, lambda: record_store.STORE_DIR / "state.json")
 def total_responses() -> int:
     """统一答卷仓库里的答卷总数，供工作台统计使用。"""
 
@@ -204,7 +207,7 @@ def get_response(survey_id: str, response_id: str) -> dict[str, Any] | None:
     return None
 
 
-@cache_by("responses_for_session", lambda: RESPONSES_DIR)
+@cache_by("responses_for_session", lambda: RESPONSES_DIR, lambda: record_store.STORE_DIR / "state.json")
 def responses_for_session(survey_id: str, session_id: str) -> list[dict[str, Any]]:
     """某轮公开问卷会话提交的全部答卷，按提交时间排序。"""
 
@@ -652,6 +655,7 @@ def commit_import(
     return {"batch": batch, "survey": _public(survey)}
 
 
+@managed("imports", id_key="batch_id", title_key="filename")
 def list_imports() -> list[dict[str, Any]]:
     if not IMPORTS_DIR.exists():
         return []

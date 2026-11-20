@@ -44,6 +44,8 @@ from .config import (
     cache_stats,
 )
 from .content import APP_VERSION, DOCS, MODELS
+from .record_store import managed
+from . import record_store
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +400,7 @@ def _inspect_feature_npz(path: Path) -> dict[str, Any] | None:
     }
 
 
+@managed("features")
 @cache_by(
     "feature_datasets",
     lambda: PROCESSED_DIR,
@@ -455,6 +458,7 @@ def _inspect_raw_npz(path: Path) -> dict[str, Any] | None:
     }
 
 
+@managed("raw_data")
 @cache_by(
     "raw_datasets",
     lambda: RAW_DIR,
@@ -566,6 +570,7 @@ def _experiment_cache_targets() -> list[Path]:
     )]
 
 
+@managed("experiments", title_key="label")
 @cache_by("experiments", _experiment_cache_targets)
 def list_experiments() -> list[dict[str, Any]]:
     experiments = []
@@ -593,7 +598,8 @@ def resolve_experiment(run_id: str) -> Path | None:
 # ---------------------------------------------------------------------------
 
 
-@cache_by("docs", lambda: DELIVERABLES_DIR)
+@managed("documents", id_key="no", title_key="title")
+@cache_by("docs", lambda: DELIVERABLES_DIR, lambda: record_store.STORE_DIR / "state.json")
 def list_docs() -> list[dict[str, Any]]:
     result = []
     for doc in DOCS:
@@ -612,6 +618,8 @@ def list_docs() -> list[dict[str, Any]]:
                 "pdf_url": f"/files/pdf/{doc['no']}" if pdf.exists() else "",
             }
         )
+    from .record_store import snapshot
+    result.extend(snapshot().get("uploads", {}).get("documents", {}).values())
     return result
 
 

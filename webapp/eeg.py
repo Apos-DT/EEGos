@@ -13,6 +13,7 @@ from eeg_emostudio.data.eeglab import load_eeglab_set, safe_extract_zip
 
 from .config import EEG_UPLOAD_DIR as UPLOAD_DIR
 from .config import OUTPUT_DIR, ROOT
+from .record_store import managed
 
 
 def _safe_id(value: str) -> str:
@@ -62,6 +63,7 @@ def save_upload(body: bytes, filename: str) -> dict[str, Any]:
     return summary
 
 
+@managed("eeg_uploads", id_key="upload_id", title_key="filename")
 def list_uploads() -> list[dict[str, Any]]:
     if not UPLOAD_DIR.exists():
         return []

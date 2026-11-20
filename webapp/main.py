@@ -20,6 +20,7 @@ from .common import BASE_DIR
 from .config import ACCESS_TOKEN
 from .content import APP_NAME, APP_VERSION
 from .routers import ALL_ROUTERS
+from .record_store import StoreError
 
 # 被试端与健康检查永远公开；管理端在设置了 EEG_WEB_TOKEN 时要求令牌。
 PUBLIC_PREFIXES = ("/static/", "/q/", "/api/public/", "/api/health")
@@ -82,6 +83,9 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+    @app.exception_handler(StoreError)
+    async def record_store_unavailable(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=503)
     for router in ALL_ROUTERS:
         app.include_router(router)
     # 常驻注册：未设令牌时守卫直接放行。这样令牌逻辑可被测试覆盖，

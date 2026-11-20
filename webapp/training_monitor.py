@@ -149,7 +149,7 @@ def _progress(output, params, status):
             "note": "进度在评估与折结束时更新" if known else "此任务未写出实时进度；只能确认进程状态"}
 
 
-def snapshot():
+def _snapshot():
     global _cache_at, _cache
     with _lock:
         if _cache and time.monotonic()-_cache_at < 5:
@@ -245,10 +245,23 @@ def snapshot():
                 "error": job.get("error") or meta.get("error"),
                 "report_url": f"/api/experiments/{run_id}/report" if output and (output / "report.html").exists() else None})
         active = [t for t in tasks if t["status"] in ("running", "queued", "unknown")]
-        recent = sorted([t for t in tasks if t not in active], key=lambda t:t.get("finished_at") or t.get("started_at") or "", reverse=True)[:6]
+        recent = sorted([t for t in tasks if t not in active], key=lambda t:t.get("finished_at") or t.get("started_at") or "", reverse=True)
         active.sort(key=lambda t:t.get("started_at") or "", reverse=True)
         _cache = {"sampled_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "process_scan_ok": reliable, "errors": errors, "gpu": gpu_snapshot(),
             "active_count": len(active), "tasks": active + recent}
         _cache_at = time.monotonic()
         return _cache
+
+
+def snapshot(all_tasks=False):
+    import copy
+    from .record_store import decorate_rows
+    data = copy.deepcopy(_snapshot())
+    tasks = decorate_rows("jobs", data["tasks"], id_key="job_id", title_key="title")
+    tasks = decorate_rows("training_tasks", tasks, title_key="title")
+    active = [task for task in tasks if task["status"] in {"running", "queued", "unknown"}]
+    recent = [task for task in tasks if task not in active]
+    data["tasks"] = active + (recent if all_tasks else recent[:6])
+    data["active_count"] = len(active)
+    return data

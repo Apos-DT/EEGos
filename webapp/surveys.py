@@ -7,6 +7,8 @@ import re
 import secrets
 import uuid
 from datetime import datetime
+from .record_store import managed
+from . import record_store
 from pathlib import Path
 from typing import Any
 
@@ -89,8 +91,19 @@ def _response_count(survey_id: str) -> int:
     if not path.exists():
         return 0
     try:
+        removed = record_store.snapshot()["records"].get("responses", {})
+        count = 0
         with path.open("r", encoding="utf-8") as handle:
-            return sum(1 for line in handle if line.strip())
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    response_id = json.loads(line).get("response_id", "")
+                except ValueError:
+                    continue
+                if not removed.get(response_id, {}).get("deleted_at"):
+                    count += 1
+        return count
     except OSError:
         return 0
 
@@ -309,13 +322,17 @@ def load_survey(survey_id: str) -> dict[str, Any]:
 
 
 def survey_by_token(token: str) -> dict[str, Any]:
+    from .record_store import metadata
     for survey in _all():
         if survey.get("token") == token:
+            if metadata("surveys", survey["id"]).get("deleted_at"):
+                raise FileNotFoundError("问卷链接不存在")
             return survey
     raise FileNotFoundError("问卷链接不存在")
 
 
-@cache_by("surveys", lambda: SURVEYS_DIR)
+@managed("surveys", title_key="title")
+@cache_by("surveys", lambda: SURVEYS_DIR, lambda: record_store.STORE_DIR / "state.json")
 def list_surveys() -> list[dict[str, Any]]:
     return [_public(survey) for survey in _all()]
 

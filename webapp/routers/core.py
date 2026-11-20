@@ -13,6 +13,7 @@ from ..common import job_payload, render
 from ..content import APP_NAME, APP_VERSION
 from ..jobs import manager
 from ..services import list_docs, overview, system_info
+from ..record_resources import job_records
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ async def dashboard(request: Request) -> HTMLResponse:
 async def system_page(request: Request) -> HTMLResponse:
     info = await run_in_threadpool(system_info)
     data = await run_in_threadpool(overview)
-    jobs = [job_payload(job) for job in manager.list(12)]
+    jobs = await run_in_threadpool(job_records, 100)
     return render(request, "system", "system.html", info=info, data=data, jobs=jobs)
 
 
