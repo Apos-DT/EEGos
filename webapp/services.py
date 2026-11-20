@@ -556,7 +556,17 @@ def _experiment_info(path: Path) -> dict[str, Any] | None:
     }
 
 
-@cache_by("experiments", lambda: EXPERIMENTS_DIR)
+def _experiment_cache_targets() -> list[Path]:
+    # Runs are created before training finishes. Watching only the parent
+    # directory misses metrics/report writes inside an existing run directory.
+    files = ("metrics.json", "run_meta.json", "report.html",
+             "figures/confusion_matrix.png", "figures/per_subject_accuracy.png")
+    return [EXPERIMENTS_DIR, *(
+        directory / name for directory in _experiment_dirs() for name in files
+    )]
+
+
+@cache_by("experiments", _experiment_cache_targets)
 def list_experiments() -> list[dict[str, Any]]:
     experiments = []
     for path in _experiment_dirs():
