@@ -75,3 +75,10 @@ desktop.ini
 # pip temporary download/metadata directories
 /pip-metadata-*/
 /pip-unpack-*/
+
+/pip-build-tracker-*/
+/pip-ephem-wheel-cache-*/
+/pip-install-*/
+
+# Local research handoff and personal project memory
+/.codex/project-memory/

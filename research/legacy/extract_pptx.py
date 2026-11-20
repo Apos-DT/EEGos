@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 from pptx import Presentation
 import re
+from pathlib import Path
 
-p = r"C:\Users\24114\Desktop\EEG Emotion Recognition\高宇261022.pptx"
-prs = Presentation(p)
+p = Path(__file__).resolve().parents[2] / "research" / "references" / "slides" / "高宇261022.pptx"
+prs = Presentation(str(p))
 
 
 def walk(shapes, out):

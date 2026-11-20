@@ -167,32 +167,55 @@ EEGos/
 │   ├── training/            # LOSO、指标、训练循环
 │   └── reporting/           # 图表与 HTML 报告
 ├── webapp/                  # FastAPI + Jinja2 + 原生 CSS/JS 本地控制台
-├── tests/                   # unittest 测试（58 项）
+├── tests/                   # 单元测试、接口与处理链路回归
 ├── scripts/                 # 图表、DOCX/PPT/工作簿构建脚本
 ├── configs/                 # 预留 YAML 配置（后续接入）
 │
 │  ── 文档（毕设规范）──────────────────────────────
-├── docs/                    # 00–17 毕业设计文档（Markdown 源，唯一事实源）
+├── docs/                    # 00–19 文档、DDA 复现与原始 EEG 处理协议
 │   └── assets/              # 架构图、数据流图、甘特图、数据实体图
 │
 │  ── 研究过程资料 ─────────────────────────────────
 ├── research/                # 见 research/README.md
 │   ├── quality/video/       # 视频预评价质量排序（select 的输入证据）
 │   ├── quality/audio/       # 音乐预评价质量排序
-│   ├── references/          # 参考文献清单（CSV/XLSX）
+│   ├── references/          # 参考文献清单（CSV/XLSX）与 slides/ 参考演示稿
+│   ├── reproductions/       # 独立论文复现附件（DDA sidecar）
 │   ├── weekly/              # 周工作汇报
-│   └── legacy/              # 原有数据探索/评分脚本（保留不动）
+│   └── legacy/              # 历史探索/评分脚本，非正式系统入口
 │
 │  ── 本地数据（体积/许可原因不入库）──────────────
 ├── data/                    # raw/processed/SEED_IV/media；仅 README 与清单 JSON 入库
 ├── 山科数据集/              # 原始刺激与问卷（项目约定：不移动、不改名）
-├── 文献/                    # 9 篇可公开获取的参考文献 PDF
+├── 文献/                    # 文献 PDF 与下载清单
 │
 │  ── 运行产物（可由脚本再生成，不入库）──────────
-├── artifacts/               # 审计、选材、演示、实验
+├── artifacts/               # 审计、EEG 处理、实验报告、日志与截图归档
 ├── deliverables/            # Word/Excel/PDF 交付物
-└── ppt_assets/             # 组会汇报页面截图
+├── ppt_assets/              # PPT 构建脚本使用的固定素材目录
+└── .venv-eeg/               # 本机 EEG 处理环境（不入库，不移动）
 ```
+
+
+### 快速定位本机文件
+
+| 需要找的内容 | 目录 |
+|---|---|
+| 启动网页 | 根目录 `start.bat`（Windows）或 `start.sh` |
+| 正式代码与页面 | `eeg_emostudio/`、`webapp/` |
+| SEED-IV 原始数据与官方特征 | `data/SEED_IV/` |
+| 原始刺激与问卷源文件 | `山科数据集/` |
+| 自有问卷与答卷 | `data/surveys/`、`data/survey_responses/` |
+| EEG 处理结果 | `artifacts/eeg/` |
+| 模型实验与报告 | `artifacts/experiments/` |
+| 当前页面效果截图 | `artifacts/ui_previews/` |
+| 旧页面截图及路由基线 | `artifacts/ui_previews/legacy/` |
+| Word、PDF、Excel、正式汇报 | `deliverables/` |
+| 参考 PPT（高宇261022） | `research/references/slides/` |
+| 周报、文献题录、复现源码 | `research/weekly/`、`research/references/`、`research/reproductions/` |
+| 安装缓存与目录整理清单 | `artifacts/local_archive/` |
+
+本机数据、环境与运行产物沿用现有路径；整理仅归档闲置安装缓存和散放材料。每次移动的旧路径、新路径、字节数与 SHA256 记录在 `artifacts/local_archive/folder_cleanup-*/move_manifest.json`，可据此恢复。
 
 ---
 

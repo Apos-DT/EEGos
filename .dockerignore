@@ -24,3 +24,14 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# Local EEG environment and interrupted pip workspaces
+.venv-eeg/
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
+pip-metadata-*/
+pip-unpack-*/
+
+# Personal research context is not needed by the application image
+.codex/project-memory/
