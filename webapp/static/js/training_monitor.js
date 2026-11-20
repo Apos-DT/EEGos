@@ -4,6 +4,7 @@
   const labels = {running: "训练进程运行中", queued: "排队中", success: "已完成", failed: "失败", interrupted: "进程已退出 · 无完成记录", unknown: "状态待确认"};
   let timer;
   let inFlight = false;
+  const renderedTasks = new WeakMap();
   function node(tag, text, cls) {
     const el = document.createElement(tag);
     if (text !== undefined) el.textContent = text;
@@ -35,6 +36,8 @@
   function taskCard(task) {
     const card = node("article", undefined, "monitor-task");
     card.dataset.taskId = task.id;
+    card.dataset.recordResource = "training_tasks";
+    card.dataset.recordId = task.id;
     const header = node("div", undefined, "monitor-task-head");
     const state = task.status === "running" && !task.pid ? "任务执行中 · 等待进程状态" : labels[task.status] || task.status;
     header.append(node("strong", task.title), node("span", state, `badge badge-${task.status === "running" ? "blue" : task.status === "success" ? "green" : "neutral"}`));
@@ -69,15 +72,37 @@
     }
     return card;
   }
-  function render(data) {
-    const open = new Set(Array.from(document.querySelectorAll("#backgroundTraining details[data-detail-id][open]")).map(el => el.dataset.detailId));
-    const scroll = new Map(Array.from(document.querySelectorAll("#backgroundTraining article[data-task-id]")).map(el => {
+  function renderTasks(container, tasks) {
+    const signature = JSON.stringify(tasks);
+    if (renderedTasks.get(container) === signature) return;
+    const open = new Set(Array.from(container.querySelectorAll("details[data-detail-id][open]")).map(el => el.dataset.detailId));
+    const scroll = new Map(Array.from(container.querySelectorAll("article[data-task-id]")).map(el => {
       const log = el.querySelector("pre");
       return [el.dataset.taskId, {top: log.scrollTop, bottom: log.scrollHeight - log.scrollTop - log.clientHeight < 30}];
     }));
+    const top = container.scrollTop;
+    const focused = container.contains(document.activeElement) ? document.activeElement : null;
+    const focusedTask = focused?.closest("article")?.dataset.taskId;
+    const focusedTag = focused?.tagName.toLowerCase();
+    container.replaceChildren();
+    for (const task of tasks) {
+      const card = taskCard(task);
+      if (open.has(task.id)) card.querySelector("details").open = true;
+      container.append(card);
+      const position = scroll.get(task.id);
+      const log = card.querySelector("pre");
+      if (position && open.has(task.id)) log.scrollTop = position.bottom ? log.scrollHeight : position.top;
+      if (task.id === focusedTask && ["summary", "a"].includes(focusedTag)) {
+        card.querySelector(focusedTag)?.focus({preventScroll:true});
+      }
+    }
+    container.scrollTop = top;
+    renderedTasks.set(container, signature);
+  }
+  function render(data) {
     $("monitorCount").textContent = `${data.active_count} 个活动任务`;
     $("monitorCount").className = `badge badge-${data.active_count ? "blue" : "neutral"}`;
-    $("monitorStatus").textContent = data.errors?.length ? data.errors.join("；") : `最近采样：${new Date(data.sampled_at).toLocaleTimeString("zh-CN", {hour12:false})} · 刷新页面后自动恢复监控`;
+    $("monitorStatus").textContent = data.errors?.length ? data.errors.join("；") : `${new Date(data.sampled_at).toLocaleTimeString("zh-CN", {hour12:false})} · 5 秒刷新`;
     const gpu = $("monitorGPU"); gpu.replaceChildren();
     if (data.gpu.available) {
       for (const device of data.gpu.devices) {
@@ -98,17 +123,14 @@
       }
     } else gpu.append(node("p", data.gpu.message || "GPU 信息暂不可用", "hint"));
     const active = $("monitorTasks"), history = $("monitorHistory");
-    active.replaceChildren(); history.replaceChildren();
-    for (const task of data.tasks) {
-      const card = taskCard(task);
-      if (open.has(task.id)) card.querySelector("details").open = true;
-      (["running", "queued", "unknown"].includes(task.status) ? active : history).append(card);
-      const position = scroll.get(task.id);
-      const log = card.querySelector("pre");
-      if (position && open.has(task.id)) log.scrollTop = position.bottom ? log.scrollHeight : position.top;
-    }
+    const activeTasks = data.tasks.filter(task => ["running", "queued", "unknown"].includes(task.status));
+    const historyTasks = data.tasks.filter(task => !["running", "queued", "unknown"].includes(task.status));
+    renderTasks(active, activeTasks);
+    renderTasks(history, historyTasks);
     if (!active.childElementCount) active.append(node("p", data.process_scan_ok ? "当前未发现本项目正在运行的训练进程。" : "无法确认当前是否存在训练进程。", "hint"));
-    $("monitorRecent").hidden = !history.childElementCount;
+    $("monitorRecent").hidden = !historyTasks.length;
+    $("monitorHistoryCount").textContent = historyTasks.length;
+    if (!history.childElementCount) history.append(node("p", "暂无最近结束的任务。", "hint"));
   }
   async function refresh() {
     if (inFlight || document.hidden) return;
@@ -120,6 +142,21 @@
     } finally { inFlight = false; }
   }
   document.addEventListener("DOMContentLoaded", () => {
+    const dialog = $("monitorHistoryDialog");
+    $("monitorRecent").addEventListener("click", () => {
+      dialog.showModal();
+      document.body.classList.add("training-history-open");
+    });
+    $("closeMonitorHistory").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => {
+      document.body.classList.remove("training-history-open");
+      if (!$("monitorRecent").hidden) $("monitorRecent").focus({preventScroll:true});
+    });
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) return;
+      const rect = dialog.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+    });
     refresh(); timer = setInterval(refresh, 5000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
     window.addEventListener("pagehide", () => clearInterval(timer));

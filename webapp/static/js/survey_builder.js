@@ -149,17 +149,14 @@
     const count = picks().length;
     if (selectedCount) selectedCount.textContent = `已选 ${count} 个`;
   }
+  const materialRows=Array.from(table.querySelectorAll("tbody tr"));
+  const materialQuery=new EEG.ListController({items:materialRows,searchText:r=>r.dataset.search,matches:(r,f)=>(f.modality==="all"||r.dataset.modality===f.modality)&&(!f.category||r.dataset.category===f.category)});
   function filterRows() {
     const query = (search?.value || "").trim().toLowerCase();
     const cat = category?.value || "";
-    let n = 0;
-    table.querySelectorAll("tbody tr").forEach((row) => {
-      const show = (!query || (row.dataset.search || "").toLowerCase().includes(query))
-        && (modality === "all" || row.dataset.modality === modality)
-        && (!cat || row.dataset.category === cat);
-      row.hidden = !show;
-      if (show) n += 1;
-    });
+    const result=materialQuery.update({query,filters:{modality,category:cat}});
+    materialRows.forEach(row=>{row.hidden=true;});result.items.forEach(row=>{row.hidden=false;});
+    const n=result.total;
     if (visible) visible.textContent = `${n} 条`;
   }
 

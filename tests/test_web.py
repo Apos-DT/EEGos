@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,16 @@ class WebTests(unittest.TestCase):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
             self.assertIn("EEG-EmoStudio", response.text)
+
+    def test_surveys_render_legacy_rows_without_record_metadata(self):
+        legacy = {"id":"legacy", "title":"Legacy survey", "status":"open",
+                  "description":"", "n_materials":1, "n_questions":3, "n_responses":2,
+                  "n_video":1, "n_audio":0, "schema_version":1,
+                  "created_at":"2026-11-16", "updated_at":"2026-11-16", "public_path":"/q/legacy"}
+        with patch("webapp.routers.survey.list_surveys", return_value=[legacy]):
+            response = self.client.get("/surveys")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Legacy survey", response.text)
 
     def test_legacy_experiment_pages_redirect(self):
         """旧版现场实验与统计页已下线，统一收敛到问卷数据页。"""

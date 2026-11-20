@@ -8,23 +8,32 @@
 {% endblock %}
 
 {% block content %}
-<section class="stimuli-intro">
-  <div>
-    <h2>素材库</h2>
-    <p>统一管理视频与音乐；问卷只从 <span class="mono">data/media</span> 读取素材。源文件夹变化不会再影响已建问卷。</p>
-  </div>
-  <div class="stimuli-stats">
-    <div><strong>{{ data.counts.video }}</strong><span>视频</span></div>
-    <div><strong>{{ data.counts.audio }}</strong><span>音乐</span></div>
-    <div><strong>{{ data.counts.managed }}</strong><span>已纳管</span></div>
-    <div><strong>{{ data.selected_count }}</strong><span>正式选材</span></div>
-  </div>
-</section>
+{% set missing_count = data["items"]|rejectattr('available')|list|length %}
+<div class="media-overview" aria-label="素材概况与快捷筛选">
+  <button class="media-overview-card" type="button" data-media-view="all">
+    <span class="media-overview-label">{{ icon('database', 16) }} 素材总量</span>
+    <strong>{{ data["items"]|length }}<small>个</small></strong>
+    <span class="media-overview-detail">{{ data.counts.video }} 视频 · {{ data.counts.audio }} 音乐</span>
+    <span class="media-overview-action">查看全部 {{ icon('arrow', 14) }}</span>
+  </button>
+  <button class="media-overview-card" type="button" data-media-view="selected">
+    <span class="media-overview-label">{{ icon('check', 16) }} 正式选材</span>
+    <strong>{{ data.selected_count }}<small>个</small></strong>
+    <span class="media-overview-detail">已标记为正式实验素材</span>
+    <span class="media-overview-action">筛选素材 {{ icon('arrow', 14) }}</span>
+  </button>
+  <button class="media-overview-card {{ 'media-overview-warning' if missing_count else '' }}" type="button" data-media-view="missing">
+    <span class="media-overview-label">{{ icon('alert' if missing_count else 'shield', 16) }} 文件缺失</span>
+    <strong>{{ missing_count }}<small>个</small></strong>
+    <span class="media-overview-detail">{{ '部分素材文件需要检查或重新同步' if missing_count else '所有素材文件均在库内' }}</span>
+    <span class="media-overview-action">检查文件 {{ icon('arrow', 14) }}</span>
+  </button>
+</div>
 
-<section class="panel mt-4">
+<section class="panel media-files-panel">
   <div class="panel-head">
-    <div><h2>素材文件</h2><p>{{ data.managed_dir }} · 源目录：{{ data.source.video }} / {{ data.source.audio }}</p></div>
-    <button class="btn btn-soft btn-sm" type="button" id="mediaSync">{{ icon('refresh', 13) }} 同步/重扫</button>
+    <div><h2>素材文件</h2><p>筛选实验素材，预览内容后用于问卷。</p></div>
+    <button class="btn btn-soft btn-sm" type="button" id="mediaSync">{{ icon('refresh', 13) }} 同步素材</button>
   </div>
   <div class="stimuli-toolbar">
     <div class="search-box">{{ icon('search', 14) }}<input id="mediaSearch" placeholder="搜索文件名 / 原始名称 / 标签…"></div>
@@ -33,23 +42,24 @@
       <button class="chip" type="button" data-filter="video">视频</button>
       <button class="chip" type="button" data-filter="audio">音乐</button>
     </div>
-    <select id="mediaCategory" class="select" style="width:150px">
+    <select id="mediaCategory" class="select" style="width:150px" aria-label="按情绪象限筛选">
       <option value="">全部象限</option>
       <option value="HVHA">HVHA</option>
       <option value="HVLA">HVLA</option>
       <option value="LVHA">LVHA</option>
       <option value="LVLA">LVLA</option>
     </select>
+    <select id="mediaAvailability" class="select" aria-label="按文件状态筛选"><option value="">全部文件状态</option><option value="available">文件可用</option><option value="missing">文件缺失</option></select>
     <label class="checkline" style="margin:0"><input type="checkbox" id="mediaSelectedOnly"> 只看正式选材</label>
     <span class="table-count" id="mediaCount">{{ data["items"]|length }} 条</span>
   </div>
-  <div class="table-wrap">
+  <div class="table-wrap media-list-viewport" id="mediaListViewport" role="region" aria-label="素材列表，可在内部滚动" tabindex="0">
     <table class="data" id="mediaTable">
-      <thead><tr><th>文件</th><th>类型</th><th>象限</th><th>标签</th><th>质量</th><th>选材</th><th>文件</th><th></th></tr></thead>
+      <thead><tr><th>素材名称</th><th>类型</th><th>象限</th><th>标签</th><th>质量</th><th>选材</th><th>文件状态</th><th></th></tr></thead>
       <tbody>
         {% for item in data["items"] %}
-        <tr data-search="{{ item.filename }} {{ item.original_name }} {{ item.category }} {{ item.discrete_label }}" data-modality="{{ item.modality }}" data-category="{{ item.category }}" data-selected="{{ '1' if item.selected else '0' }}">
-          <td><strong class="mono">{{ item.filename }}</strong><div class="hint">{{ item.original_name or '—' }}</div></td>
+        <tr data-record-resource="media" data-record-id="{{ item.id }}" data-search="{{ item.display_name or item.filename }} {{ item.original_name }} {{ item.category }} {{ item.discrete_label }} {{ (item.record_meta|default({})).notes }} {{ (item.record_meta|default({})).tags|join(' ') }}" data-modality="{{ item.modality }}" data-category="{{ item.category }}" data-selected="{{ '1' if item.selected else '0' }}" data-available="{{ '1' if item.available else '0' }}">
+          <td><strong class="mono">{{ item.display_name or item.filename }}</strong><div class="hint">{{ item.original_name or item.filename }}</div></td>
           <td>{% if item.modality == 'video' %}<span class="badge badge-blue">视频</span>{% else %}<span class="badge badge-amber">音乐</span>{% endif %}</td>
           <td><span class="badge badge-gray">{{ item.category or '—' }}</span></td>
           <td>{{ item.discrete_label or '—' }}</td>
@@ -61,10 +71,15 @@
         {% endfor %}
       </tbody>
     </table>
+  <div class="empty media-filter-empty" id="mediaEmpty" hidden><h3>没有符合条件的素材</h3><p>调整筛选条件，或同步素材以更新文件状态。</p><button class="btn btn-soft btn-sm" type="button" id="mediaReset">重置筛选</button></div>
+  <details class="media-storage"><summary>存储位置</summary><dl><dt>素材库</dt><dd>{{ data.managed_dir }}</dd><dt>视频来源</dt><dd>{{ data.source.video }}</dd><dt>音乐来源</dt><dd>{{ data.source.audio }}</dd></dl></details>
+  {{ job_console('mediaJob', '素材库同步') }}
   </div>
+  <nav class="media-pagination" id="mediaPagination" aria-label="素材列表分页">
+    <div class="media-page-info"><span id="mediaPageRange" aria-live="polite"></span><label for="mediaPageSize">每页 <select class="select" id="mediaPageSize"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select> 条</label></div>
+    <div class="media-page-controls"><button class="btn btn-soft btn-sm" id="mediaPrev" type="button" aria-label="上一页">上一页</button><div id="mediaPages" class="media-page-numbers"></div><button class="btn btn-soft btn-sm" id="mediaNext" type="button" aria-label="下一页">下一页</button></div>
+  </nav>
 </section>
-
-{{ job_console('mediaJob', '素材库同步') }}
 {% endblock %}
 
 {% block scripts %}

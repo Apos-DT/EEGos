@@ -17,7 +17,9 @@
     try { data = text ? JSON.parse(text) : null; } catch (_) { data = { detail: text }; }
     if (!response.ok) {
       const detail = data && data.detail;
-      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail || response.statusText));
+      const error = new Error(typeof detail === "string" ? detail : JSON.stringify(detail || response.statusText));
+      error.status = response.status;
+      throw error;
     }
     return data;
   };
@@ -149,16 +151,12 @@
     const count = options.count ? document.getElementById(options.count) : null;
     const chips = options.chips ? Array.from(document.querySelectorAll(options.chips)) : [];
     let activeChip = "all";
+    const controller=new EEG.ListController({items:rows,searchText:r=>r.dataset.search||r.textContent,matches:(r,f)=>f.active==="all"||r.dataset.group===f.active});
     const apply = () => {
       const query = (input && input.value ? input.value : "").trim().toLowerCase();
-      let visible = 0;
-      rows.forEach((row) => {
-        const text = (row.dataset.search || row.textContent || "").toLowerCase();
-        const chipMatch = activeChip === "all" || row.dataset.group === activeChip;
-        const show = chipMatch && (!query || text.includes(query));
-        row.style.display = show ? "" : "none";
-        if (show) visible += 1;
-      });
+      const result=controller.update({query,filters:{active:activeChip}});
+      rows.forEach(row=>{row.hidden=true;});result.items.forEach(row=>{row.hidden=false;});
+      const visible=result.total;
       if (count) count.textContent = `${visible} 条`;
     };
     if (input) input.addEventListener("input", apply);

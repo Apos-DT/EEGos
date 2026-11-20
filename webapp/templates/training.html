@@ -1,39 +1,42 @@
 {% extends "base.html" %}
-{% from "macros.html" import icon, badge, job_console %}
+{% from "macros.html" import icon, badge %}
 
 {% block actions %}
-  <a class="btn btn-soft" href="#backgroundTraining">{{ icon('activity', 15) }} 后台监控</a>
+  <button class="btn btn-soft" id="monitorShortcut" type="button">{{ icon('activity', 15) }} 后台监控</button>
   <a class="btn btn-soft" href="/experiments">{{ icon('activity', 15) }} 实验记录</a>
   <button class="btn btn-primary" id="topTrain">{{ icon('play', 15) }} 启动实验</button>
 {% endblock %}
 
 {% block content %}
-<div class="training-layout">
-  <section class="panel training-form">
-    <div class="panel-head"><div><h2 class="panel-title">新建训练实验</h2><p class="panel-sub">选择方法，配置数据与评估范围</p></div></div>
-    <div class="panel-body">
-      <form id="trainingForm">
+<div class="training-pane-tabs" role="tablist" aria-label="训练工作区">
+  <button id="trainingConfigTab" type="button" role="tab" aria-controls="trainingConfigPane" aria-selected="true">实验配置</button>
+  <button id="trainingMonitorTab" type="button" role="tab" aria-controls="trainingMonitorPane" aria-selected="false" tabindex="-1">运行监控</button>
+</div>
+<div class="training-layout" data-training-view="config">
+  <section class="panel training-form" id="trainingConfigPane" aria-label="实验配置">
+    <div class="panel-head"><h2 class="panel-title">新建训练实验 <span class="training-caption">数据、协议与参数</span></h2></div>
+    <form id="trainingForm">
+    <div class="panel-body training-config-scroll" tabindex="0" role="region" aria-label="训练配置，可在内部滚动">
         <section class="training-step">
-          <h3>1 · 选择方法</h3>
+          <h3>1 · 选择方法 <span class="training-caption" id="methodHint"></span></h3>
           <div class="model-grid">
-            <label class="model-card"><input type="radio" name="model" value="dda" {% if not request.query_params.get('dataset') %}checked{% endif %}><div class="model-inner"><div class="model-head"><span class="model-name">DDA</span><span class="model-tag">域适配</span></div><div class="model-desc">动态对齐源域与目标域，支持 UDDA / SDDA。</div><div class="model-meta">论文复现 · SEED-IV · MLP 骨干</div></div></label>
+            <label class="model-card"><input type="radio" name="model" value="dda" {% if not request.query_params.get('dataset') %}checked{% endif %}><div class="model-inner"><span class="model-name">DDA</span></div></label>
             {% for model in models if model.key != 'eegnet' %}
-            <label class="model-card"><input type="radio" name="model" value="{{ model.key }}" {% if model.key == 'dualview' and request.query_params.get('dataset') %}checked{% endif %}><div class="model-inner"><div class="model-head"><span class="model-name">{{ model.name }}</span><span class="model-tag">{{ model.tag }}</span></div><div class="model-desc">{{ model.desc }}</div><div class="model-meta">{{ model.meta }}</div></div></label>
+            <label class="model-card" data-description="{{ model.desc }}"><input type="radio" name="model" value="{{ model.key }}" {% if model.key == 'dualview' and request.query_params.get('dataset') %}checked{% endif %}><div class="model-inner"><span class="model-name">{{ model.name }}</span></div></label>
             {% endfor %}
           </div>
-          <p class="hint" id="methodHint"></p>
         </section>
         <fieldset id="standardConfig" hidden disabled>
           <section class="training-step">
-            <h3>2 · 选择数据</h3>
+            <h3>2 · 选择数据 <span class="training-caption" id="datasetHint"></span></h3>
             <div class="field"><label for="datasetSelect">特征数据集</label><select class="select" id="datasetSelect" required>
-              {% for ds in datasets %}<option value="{{ ds.id }}" data-samples="{{ ds.n_samples }}" data-source="{{ ds.source }}" {% if ds.id == selected_dataset %}selected{% endif %}>{{ ds.file }} · {{ ds.n_samples }}×{{ ds.n_channels }}×{{ ds.n_features }}{% if ds.source %} · {{ ds.source }}{% endif %}</option>{% endfor %}
-            </select><div class="hint" id="datasetHint"></div></div>
+              {% for ds in datasets %}<option value="{{ ds.id }}" data-samples="{{ ds.n_samples }}" data-source="{{ ds.source }}" {% if ds.id == selected_dataset %}selected{% endif %}>{{ (ds.record_meta|default({})).title or ds.file }} · {{ ds.n_samples }}×{{ ds.n_channels }}×{{ ds.n_features }}{% if ds.source %} · {{ ds.source }}{% endif %}</option>{% endfor %}
+            </select></div>
             {% if not datasets %}<p class="hint">尚无特征数据集。请先到<a href="/datasets">数据集</a>上传或提取特征。</p>{% endif %}
           </section>
           <section class="training-step">
-            <h3>3 · 评估协议</h3>
-            <div class="field"><label for="standardSetting">数据划分</label><select class="select" id="standardSetting"><option value="loso">跨被试 LOSO</option><option value="subject-dependent">被试依赖</option></select><div class="hint">LOSO 每折留一名被试测试，验证集来自训练被试。被试依赖划分只作上界参考。</div></div>
+            <h3>3 · 评估协议 <span class="training-caption">LOSO 被试隔离 · 被试依赖仅作参考</span></h3>
+            <div class="field"><label for="standardSetting">数据划分</label><select class="select" id="standardSetting"><option value="loso">跨被试 LOSO</option><option value="subject-dependent">被试依赖</option></select></div>
           </section>
           <section class="training-step">
             <h3>4 · 训练参数</h3>
@@ -52,16 +55,18 @@
           </section>
         </fieldset>
         <fieldset id="ddaConfig">
-          <section class="training-step"><h3>2 · 选择数据</h3><div class="training-dataset"><strong>SEED-IV · 官方 DE 特征</strong><p>15 名被试 · 3 个会话 · 4 类情绪</p><span class="hint">62 通道 × 5 频段 · 4 秒窗口 · de_LDS 平滑特征</span></div><div class="hint">当前 DDA 适配器支持本机 SEED-IV。数据文件与划分信息随报告归档。</div></section>
-          <section class="training-step"><h3>3 · 适配与评估</h3>
-            <div class="field mb-3"><label for="ddaAlgorithm">DDA 变体</label><select class="select" id="ddaAlgorithm"><option value="UDDA">UDDA · 无监督域适配</option><option value="SDDA">SDDA · 半监督域适配</option></select><div class="hint" id="ddaAlgorithmHint"></div></div>
-            <div class="field mb-3"><label for="ddaSetting">评估协议</label><select class="select" id="ddaSetting"><option value="cross-subject">跨被试 · 会话内留一被试</option><option value="cross-session">跨会话 · 留一完整会话</option></select></div>
-            <div class="form-grid">
+          <section class="training-step"><h3>2 · 选择数据 <span class="training-caption">62 通道 × 5 频段 · 4 秒 · de_LDS</span></h3><div class="training-dataset"><strong>SEED-IV · 官方 DE 特征</strong><span class="hint">15 被试 · 3 会话 · 4 类</span></div></section>
+          <section class="training-step"><h3>3 · 适配与评估 <span class="training-caption" id="ddaAlgorithmHint"></span></h3>
+            <div class="form-grid training-protocol">
+              <div class="field"><label for="ddaAlgorithm">DDA 变体</label><select class="select" id="ddaAlgorithm"><option value="UDDA">UDDA · 无监督域适配</option><option value="SDDA">SDDA · 半监督域适配</option></select></div>
+              <div class="field"><label for="ddaSetting">评估协议</label><select class="select" id="ddaSetting"><option value="cross-subject">跨被试 · 会话内留一被试</option><option value="cross-session">跨会话 · 留一完整会话</option></select></div>
+            </div>
+            <div class="form-grid training-scope">
               <div class="field"><label for="ddaSubject">目标被试</label><select class="select" id="ddaSubject"><option value="">全部被试</option>{% for n in range(1, 16) %}<option value="S{{ '%02d'|format(n) }}">S{{ '%02d'|format(n) }}</option>{% endfor %}</select></div>
               <div class="field"><label for="ddaSession">目标会话</label><select class="select" id="ddaSession"><option value="">全部会话</option>{% for n in range(1, 4) %}<option value="{{ n }}">Session {{ n }}</option>{% endfor %}</select></div>
-              <div class="field"><label for="ddaMaxFolds">运行范围</label><select class="select" id="ddaMaxFolds"><option value="1">先跑 1 折 · 流程检查</option><option value="0">运行全部所选折</option></select></div>
+              <div class="field"><label for="ddaMaxFolds">运行范围</label><select class="select" id="ddaMaxFolds"><option value="1">1 折 · 流程检查</option><option value="0">全部所选折</option></select></div>
               <div class="field" id="ddaLabelField" hidden><label for="ddaLabeledTrials">每名目标被试有标签 trial 数</label><input class="input" id="ddaLabeledTrials" type="number" min="1" max="23" value="4" required disabled><div class="hint">使用前 N 个 trial；这些样本从测试评分中排除。</div></div>
-            </div><div class="hint mt-3" id="ddaFoldHint" aria-live="polite"></div>
+            </div>
           </section>
           <section class="training-step"><h3>4 · 训练参数</h3>
             <div class="form-grid"><div class="field"><label for="ddaEpochs">训练轮数</label><input class="input" id="ddaEpochs" type="number" min="1" max="600" value="600" required></div><div class="field"><label for="ddaSeed">随机种子</label><input class="input" id="ddaSeed" type="number" min="0" max="2147483647" value="42" required></div></div>
@@ -74,44 +79,45 @@
             </div></details>
           </section>
         </fieldset>
+    </div>
+    <div class="training-submit-dock">
         <div class="training-review" aria-live="polite"><strong>本次实验</strong><p id="experimentSummary"></p></div>
         <div class="form-actions mt-4"><button class="btn btn-primary" type="submit" id="trainSubmit">{{ icon('play', 15) }} 启动实验</button><button class="btn btn-soft" type="button" id="quickDemo" hidden>合成数据快跑</button></div>
-        <p class="hint mt-3">后台训练可持续运行。日志、参数与结果归档后可在“实验记录”查看。</p>
-      </form>
     </div>
+    </form>
   </section>
 
-  <div class="stack">
+  <div class="stack training-side" id="trainingMonitorPane" tabindex="0" role="region" aria-label="运行监控与结果，可在内部滚动">
     <section class="panel" id="backgroundTraining" aria-label="本机训练监控">
-      <div class="panel-head"><div><h2 class="panel-title">本机训练监控</h2><p class="panel-sub">本项目的网页任务与独立训练进程 · 每 5 秒刷新</p></div><span class="badge badge-neutral" id="monitorCount">连接中</span></div>
+      <div class="panel-head"><div><h2 class="panel-title">本机训练监控 <span class="training-caption" id="monitorStatus" role="status">采样中…</span></h2></div><span class="badge badge-neutral" id="monitorCount">连接中</span></div>
       <div class="panel-body">
-        <p class="hint" id="monitorStatus" role="status">正在读取本机进程与 GPU 状态…</p>
         <div id="monitorGPU" class="monitor-gpu"></div>
         <div id="monitorTasks" class="monitor-tasks"></div>
-        <details class="mt-3" id="monitorRecent"><summary>最近结束的任务</summary><div id="monitorHistory" class="monitor-tasks mt-3"></div></details>
+        <button class="monitor-history-trigger" id="monitorRecent" type="button" aria-haspopup="dialog" aria-controls="monitorHistoryDialog" hidden>
+          <span>{{ icon('clock', 14) }} 最近结束的任务 <span class="badge badge-neutral" id="monitorHistoryCount">0</span></span>
+          <span>查看 {{ icon('arrow', 14) }}</span>
+        </button>
       </div>
     </section>
     <section class="panel">
       <div class="panel-head">
-        <div><h2 class="panel-title">本次提交</h2><p class="panel-sub" id="runHint">等待提交训练任务</p></div>
+        <div><h2 class="panel-title">本次提交 <span class="training-caption" id="runHint">等待提交训练任务</span></h2></div>
         <span class="badge badge-neutral" id="runState">IDLE</span>
       </div>
       <div class="panel-body" id="trainingIdle">
-        <p class="hint" id="ddaIdle" hidden>DDA 任务将读取本机 SEED-IV 特征，按所选协议进行域适配，逐折记录训练日志并生成指标与报告。</p>
-        <div class="pipeline" id="standardPipeline">
+        <p class="hint" id="ddaIdle" hidden>SEED-IV 特征 → 域适配 → 逐折评估 → 实验报告</p>
+        <details id="standardPipeline"><summary class="hint">查看训练流程</summary><div class="pipeline">
           <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">读取特征与标签</div><div class="pipe-detail">校验形状、类别、被试</div></div><span class="pipe-state">就绪</span></div>
           <div class="pipe-step"><span class="pipe-node">2</span><div><div class="pipe-label">训练折内标准化</div><div class="pipe-detail">验证/测试只 transform</div></div><span class="pipe-state">运行时</span></div>
           <div class="pipe-step"><span class="pipe-node">3</span><div><div class="pipe-label">逐折训练 + 早停</div><div class="pipe-detail">恢复最佳验证权重</div></div><span class="pipe-state">运行时</span></div>
           <div class="pipe-step"><span class="pipe-node">4</span><div><div class="pipe-label">OOF 汇总与报告</div><div class="pipe-detail">ACC / Macro-F1 / κ / CI</div></div><span class="pipe-state">运行时</span></div>
-        </div>
+        </div></details>
       </div>
     </section>
 
-    {{ job_console('trainingConsole', '训练任务', true) }}
-
     <section class="panel training-result" id="trainingResult">
       <div class="panel-head">
-        <div><h2 class="panel-title">本次结果</h2><p class="panel-sub">本次训练的测试指标；合成数据仅用于软件验收</p></div>
+        <div><h2 class="panel-title">本次结果 <span class="training-caption">测试指标 · 合成数据仅作验收</span></h2></div>
         <a class="btn btn-soft btn-sm" id="openReport" href="#" target="_blank">{{ icon('external', 13) }} 完整报告</a>
       </div>
       <div class="panel-body">
@@ -140,7 +146,7 @@
     </section>
 
     <section class="panel">
-      <div class="panel-head"><div><h2 class="panel-title">最近实验</h2><p class="panel-sub">同协议下比较，不混合不同数据版本</p></div><a class="panel-link" href="/experiments">全部 {{ icon('arrow', 13) }}</a></div>
+      <div class="panel-head"><div><h2 class="panel-title">最近实验 <span class="training-caption">仅比较相同数据与协议</span></h2></div><a class="panel-link" href="/experiments">全部 {{ icon('arrow', 13) }}</a></div>
       {% if experiments %}
       <div class="table-wrap">
         <table class="data">
@@ -158,6 +164,14 @@
     </section>
   </div>
 </div>
+<dialog class="training-history-dialog" id="monitorHistoryDialog" aria-labelledby="monitorHistoryTitle" aria-describedby="monitorHistoryDescription">
+  <div class="training-history-head">
+    <div><h2 id="monitorHistoryTitle">最近结束的任务</h2><p id="monitorHistoryDescription">查看任务状态、日志与配置，完整结果见实验报告。</p></div>
+    <button class="btn btn-soft btn-sm" id="closeMonitorHistory" type="button" aria-label="关闭最近结束的任务">{{ icon('close', 16) }}</button>
+  </div>
+  <div id="monitorHistory" class="monitor-tasks training-history-body"></div>
+  <div class="training-history-foot"><span class="hint">按 Esc 或点击弹窗外关闭</span><a class="mini-link" href="/experiments">全部实验记录 {{ icon('arrow', 14) }}</a></div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}

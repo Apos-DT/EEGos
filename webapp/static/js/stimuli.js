@@ -6,19 +6,15 @@
   const count = document.getElementById("stimuliCount");
   let modality = "all";
   if (!table) return;
+  const rows=Array.from(table.querySelectorAll("tbody tr"));
+  const controller=new EEG.ListController({items:rows,searchText:r=>r.dataset.search,matches:(r,f)=>(f.modality==="all"||r.dataset.modality===f.modality)&&(!f.category||r.dataset.category===f.category)});
 
   function apply() {
     const query = (search?.value || "").trim().toLowerCase();
     const cat = category?.value || "";
-    let visible = 0;
-    table.querySelectorAll("tbody tr").forEach((row) => {
-      const matchText = !query || (row.dataset.search || "").toLowerCase().includes(query);
-      const matchModality = modality === "all" || row.dataset.modality === modality;
-      const matchCategory = !cat || row.dataset.category === cat;
-      const show = matchText && matchModality && matchCategory;
-      row.hidden = !show;
-      if (show) visible += 1;
-    });
+    const result=controller.update({query,filters:{modality,category:cat}});
+    rows.forEach(row=>{row.hidden=true;});result.items.forEach(row=>{row.hidden=false;});
+    const visible=result.total;
     if (count) count.textContent = `${visible} 条`;
   }
 

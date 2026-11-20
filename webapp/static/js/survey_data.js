@@ -153,14 +153,13 @@
   function filteredResponses() {
     const query = ($("responseSearch")?.value || "").trim().toLowerCase();
     const validity = $("responseValidFilter")?.value || "";
-    return state.responses.filter((r) => {
+    const controller=new EEG.ListController({items:state.responses,searchText:r=>[r.rater,r.stimulus_id,r.response_id,r.session_id,r.batch_id,r.source,r.display_name].join(" "),matches:(r)=>{
       if (state.sessionFilter && r.session_id !== state.sessionFilter) return false;
       if (validity === "valid" && !r.valid) return false;
       if (validity === "flagged" && r.valid) return false;
-      if (!query) return true;
-      return [r.rater, r.stimulus_id, r.response_id, r.session_id, r.batch_id, r.source]
-        .some((value) => String(value == null ? "" : value).toLowerCase().includes(query));
-    });
+      return true;
+    }});
+    return controller.update({query}).items;
   }
 
   function renderResponses() {
@@ -169,7 +168,7 @@
       fmt(r.batch_id || "—"), fmt(r.raw_row ?? "—"),
       r.valid ? badge("有效", "green") : badge("已标记", "amber"),
       fmt((r.flags || []).join("; ") || "—"),
-      `<button class="btn btn-soft btn-sm view-response" type="button" data-id="${esc(r.response_id)}">查看答卷</button>`,
+      `<button class="btn btn-soft btn-sm view-response" type="button" data-id="${esc(r.response_id)}">查看答卷</button><button class="btn btn-soft btn-sm manage-response" type="button" data-id="${esc(r.response_id)}">管理</button>`,
     ]);
     const shown = rows.length;
     $("responseCount").textContent = state.sessionFilter
@@ -184,6 +183,8 @@
       $("clearResponseFilter").hidden = false;
     }
   }
+
+  $("responsesBody")?.addEventListener("click",event=>{const b=event.target.closest(".manage-response");if(b)EEG.records.edit("responses",b.dataset.id);});
 
   function answerRows(record, schema) {
     const answers = record.answers || {};
@@ -309,7 +310,7 @@
     const rows = state.batches.map((b) => [
       fmt(b.batch_id), fmt(b.filename), fmt(b.kind), fmt(b.n_rows),
       fmt(b.n_valid), fmt(b.n_duplicates), fmt(b.created_at),
-      `<a class="btn btn-soft btn-sm" href="/api/surveys/imports/${encodeURIComponent(b.batch_id)}/source.csv">原始 CSV</a>`,
+      `<a class="btn btn-soft btn-sm" href="/api/surveys/imports/${encodeURIComponent(b.batch_id)}/source.csv">原始 CSV</a><button class="btn btn-soft btn-sm manage-import" type="button" data-id="${esc(b.batch_id)}">管理</button>`,
     ]);
     $("importsBody").innerHTML = table(
       ["批次", "源文件", "类型", "行数", "有效", "重复", "导入时间", "溯源"], rows
@@ -425,7 +426,8 @@
     }
   });
 
+  $("importsBody")?.addEventListener("click",event=>{const b=event.target.closest(".manage-import");if(b)EEG.records.edit("imports",b.dataset.id);});
   renderImports();
-  if (params.get("tab") === "responses") switchTab("responses");
+  if (TABS.includes(params.get("tab"))) switchTab(params.get("tab"));
   if ($("surveySelect").value) loadAll();
 })();

@@ -137,6 +137,12 @@ API 文档：`/api/swagger`；页面与 API 共用同一套数据/算法。
 
 DDA 论文复现入口：`POST /api/integrations/dda/run`。用 `EEG_DDA_REPO` 指定外部 sidecar 目录，用 `EEG_DDA_PYTHON` 指定独立训练解释器；详见 `docs/18_DDA论文复现与外部集成.md`。
 
+列表页右上角的“记录管理”使用同一套查询、分页、编辑和回收站界面，覆盖问卷、答卷、导入批次、素材、原始/特征数据集、EEG 上传/处理记录、实验、文档和任务。列表项的“管理”可直接编辑显示名称、备注和标签。移入回收站后从日常列表移除，可恢复；不改写原始文件、答案或实验指标，运行中任务不可移除。问卷移入回收站时暂停公开链接，恢复后沿用原状态。
+
+新增按业务类型接入现有流程：问卷设计、答卷导入、EEG 处理和模型训练；素材、特征 NPZ 与文档支持上传。派生统计和文件结构预览仍由源数据计算，不作为可随意修改的独立数据。公共查询/排序/分页位于 `webapp/static/js/list_controller.js`，管理交互位于 `records.js`，后端由 `record_resources.py` 适配各业务类型、`record_store.py` 负责持久化。新增资源注册适配器即可复用，不需要另写一套 CRUD。
+
+管理信息和操作历史存放于本机 `data/record_management/state.json`，已排除 Git。写入使用跨进程锁、原子替换及版本号检查，冲突返回 HTTP 409；既有管理端令牌保护同样适用于记录管理接口。接口统一为 `/api/records/{resource}`、`/item`（GET/PATCH）、`/delete`、`/restore`，查询支持关键词、当前记录/回收站及分页。验证命令：`python -m unittest discover -s tests -p test_record_management.py`。
+
 ### raw.npz 契约
 
 ```text

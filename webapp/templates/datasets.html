@@ -54,7 +54,7 @@
       <div class="panel-body">
         {% if raws %}
         {% for raw in raws %}
-        <div class="raw-row">
+        <div class="raw-row" data-record-resource="raw_data" data-record-id="{{ raw.id }}">
           <div><div class="name">{{ raw.name }} {% if raw.kind == 'demo' %}<span class="badge badge-amber">合成</span>{% endif %}</div>
             <div class="meta">{{ raw.n_trials }} trial · {{ raw.n_channels }} ch · {{ raw.n_samples }} points · {{ raw.n_subjects }} 被试{% if raw.fs %} · {{ raw.fs|int }} Hz{% endif %}</div>
           </div>
@@ -73,17 +73,17 @@
         {% if datasets %}
         <div class="dataset-grid" style="grid-template-columns:1fr">
           {% for ds in datasets %}
-          <article class="dataset-card">
+          <article class="dataset-card" data-record-resource="features" data-record-id="{{ ds.id }}">
             <div class="dataset-top">
               <label class="dataset-pick" title="选择用于合并"><input type="checkbox" class="dataset-check" data-id="{{ ds.id }}"><span></span></label>
-              <div><div class="dataset-name">{{ ds.file }}</div><div class="muted small" style="margin-top:3px">{{ ds.path }}</div></div>
+              <div><div class="dataset-name">{{ (ds.record_meta|default({})).title or ds.file }}</div><div class="muted small" style="margin-top:3px">{{ ds.path }}</div></div>
               {% if ds.kind == 'demo' %}<span class="badge badge-amber">合成</span>{% elif ds.source == 'SEED-IV' %}<span class="badge badge-blue">SEED-IV</span>{% else %}<span class="badge badge-green">可训练</span>{% endif %}
             </div>
             <div class="dataset-meta">
               <span>{{ ds.n_samples }} 样本</span><span>{{ ds.n_channels }} 通道</span><span>{{ ds.n_features }} 特征</span><span>{{ ds.n_subjects }} 被试</span><span>{{ ds.n_classes }} 类</span>
               {% if ds.n_trials %}<span>{{ ds.n_trials }} trials</span>{% endif %}{% if ds.window_seconds %}<span>{{ ds.window_seconds }} s 窗</span>{% endif %}
             </div>
-            <div class="dataset-foot">
+            <div class="dataset-foot" data-record-actions>
               <small>{% if ds.has_manifest %}manifest ✓{% else %}无 manifest{% endif %} · {{ ds.size_mb }} MB</small>
               <a class="btn btn-subtle btn-sm" href="/training?dataset={{ ds.id }}">用于训练 {{ icon('arrow', 12) }}</a>
             </div>

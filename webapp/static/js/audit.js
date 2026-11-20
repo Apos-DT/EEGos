@@ -13,31 +13,7 @@
   }
 
   function bindFilter(inputId, tableId, countId, chipsSelector) {
-    const input = document.getElementById(inputId);
-    const table = document.getElementById(tableId);
-    if (!table) return;
-    const rows = Array.from(table.querySelectorAll("tbody tr"));
-    const count = document.getElementById(countId);
-    const chips = Array.from(document.querySelectorAll(chipsSelector));
-    let active = "all";
-    const apply = () => {
-      const query = (input && input.value ? input.value : "").trim().toLowerCase();
-      let visible = 0;
-      rows.forEach((row) => {
-        const text = (row.dataset.search || row.textContent || "").toLowerCase();
-        const show = (active === "all" || row.dataset.group === active) && (!query || text.includes(query));
-        row.style.display = show ? "" : "none";
-        if (show) visible += 1;
-      });
-      if (count) count.textContent = `${visible} 条`;
-    };
-    if (input) input.addEventListener("input", apply);
-    chips.forEach((chip) => chip.addEventListener("click", () => {
-      chips.forEach((item) => item.classList.toggle("active", item === chip));
-      active = chip.dataset.filter || "all";
-      apply();
-    }));
-    apply();
+    EEG.filterTable({input:inputId,table:tableId,count:countId,chips:chipsSelector});
   }
 
   function chart() {

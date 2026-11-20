@@ -199,7 +199,7 @@
       <thead><tr><th>文件</th><th>被试</th><th>通道</th><th>时长</th><th>事件</th><th>状态</th><th>时间</th><th></th></tr></thead>
       <tbody>
         {% for item in uploads %}
-        <tr>
+        <tr data-record-resource="eeg_uploads" data-record-id="{{ item.upload_id }}">
           <td><strong class="mono">{{ item.filename }}</strong><div class="hint">{{ item.setname or 'EEGLAB' }}</div></td>
           <td>{{ item.subject or '—' }}</td>
           <td>{{ item.n_channels }}</td>

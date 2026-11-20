@@ -1,57 +1,37 @@
 (function () {
-  const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-
-  function chart() {
-    const payload = document.getElementById("experimentData");
-    if (!payload) return;
-    const experiments = JSON.parse(payload.textContent);
-    const rows = experiments
-      .filter((item) => item.accuracy !== null && item.accuracy !== undefined)
-      .sort((a, b) => b.accuracy - a.accuracy)
-      .slice(0, 8)
-      .map((item) => ({
-        label: item.label.length > 22 ? `${item.label.slice(0, 22)}…` : item.label,
-        value: Number(item.accuracy) * 100,
-        display: `${(Number(item.accuracy) * 100).toFixed(1)}%`,
-        color: item.is_demo ? "#d08a24" : "#0c7368",
-      }));
-    EESCharts.horizontalBars(document.getElementById("experimentChart"), rows, {
-      title: "实验 Accuracy 对比",
-      rowH: 34,
-    });
-  }
-
-  function filter() {
-    const table = document.getElementById("expTable");
+  "use strict";
+  document.addEventListener("DOMContentLoaded", () => {
+    const $ = id => document.getElementById(id);
+    const table = $("expTable");
     if (!table) return;
     const rows = Array.from(table.querySelectorAll("tbody tr"));
-    const input = document.getElementById("expSearch");
-    const count = document.getElementById("expCount");
-    const chips = $$(".chips .chip");
-    let active = "all";
-    const apply = () => {
-      const query = (input && input.value ? input.value : "").trim().toLowerCase();
-      let visible = 0;
-      rows.forEach((row) => {
-        const show = (active === "all" || row.dataset.group === active) &&
-          (!query || (row.dataset.search || "").toLowerCase().includes(query));
-        row.style.display = show ? "" : "none";
-        if (show) visible += 1;
-      });
-      if (count) count.textContent = `${visible} 次`;
-    };
-    if (input) input.addEventListener("input", apply);
-    chips.forEach((chip) => chip.addEventListener("click", () => {
-      chips.forEach((item) => item.classList.toggle("active", item === chip));
-      active = chip.dataset.filter;
-      apply();
-    }));
+    const controller=new EEG.ListController({items:rows,searchText:r=>r.dataset.search,
+      matches:(r,f)=>(!f.model || r.dataset.model===f.model) && (!f.protocol || r.dataset.group===f.protocol) && (!f.hideDemo || r.dataset.demo!=="1"),
+      compare:(a,b,mode)=>(mode==="accuracy" || mode==="f1") ? Number(b.dataset[mode])-Number(a.dataset[mode]) : b.dataset.created.localeCompare(a.dataset.created)});
+    const models = Array.from(new Set(rows.map(row => row.dataset.model).filter(Boolean))).sort();
+    for (const model of models) {
+      const option = document.createElement("option");
+      option.value = model; option.textContent = model; $("expModel").append(option);
+    }
+    function apply() {
+      const query = $("expSearch").value.trim().toLocaleLowerCase();
+      const model = $("expModel").value;
+      const protocol = $("expProtocol").value;
+      const mode = $("expSort").value;
+      const result=controller.update({query,filters:{model,protocol,hideDemo:$("expHideDemo").checked},sort:mode});
+      rows.forEach(row=>{row.hidden=true;});result.items.forEach(row=>{row.hidden=false;});
+      const visible=result.total;
+      table.querySelector("tbody").append(...result.items);
+      $("expCount").textContent = `${visible} / ${rows.length} 条记录`;
+      $("expEmpty").hidden = visible > 0;
+      $("experimentList").scrollTop = 0;
+    }
+    $("expSearch").addEventListener("input", apply);
+    ["expModel", "expProtocol", "expSort", "expHideDemo"].forEach(id => $(id).addEventListener("change", apply));
+    $("expReset")?.addEventListener("click", () => {
+      $("expSearch").value = ""; $("expModel").value = ""; $("expProtocol").value = "";
+      $("expSort").value = "recent"; $("expHideDemo").checked = false; apply();
+    });
     apply();
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    chart();
-    filter();
   });
 })();

@@ -22,21 +22,45 @@
     <button class="chip" type="button" data-survey-filter="archived" aria-pressed="false">已归档</button>
   </div>
   <div class="search-box survey-search">{{ icon('search', 16) }}<input id="surveySearch" type="search" placeholder="搜索问卷标题、说明…" aria-label="搜索问卷"></div>
+  <select class="select survey-sort" id="surveySort" aria-label="问卷排序"><option value="updated">最近更新</option><option value="responses">答卷最多</option><option value="title">标题顺序</option></select>
   <span class="table-count" id="surveyVisible" aria-live="polite">{{ surveys|length }} 个问卷</span>
 </div>
 <div class="survey-grid" id="surveyGrid">
 {% for survey in surveys %}
-  <article class="survey-tile" data-survey="{{ survey.id }}" data-status="{{ survey.status }}" data-search="{{ survey.title }} {{ survey.description or '' }} {{ survey.id }}">
-    <div class="survey-tile-top"><span class="survey-tile-icon">{{ icon('file', 20) }}</span><span class="badge {% if survey.status == 'open' %}badge-green{% elif survey.status == 'archived' %}badge-amber{% else %}badge-neutral{% endif %}">{{ survey.status_label }}</span></div>
-    <h2><a href="/surveys/{{ survey.id }}/edit">{{ survey.title }}</a></h2>
-    <p class="survey-description" title="{{ survey.description or '' }}">{{ survey.description or '暂未填写问卷说明' }}</p>
-    <div class="survey-tile-stats"><div><strong>{{ survey.n_materials }}</strong><span>素材</span></div><div><strong>{{ survey.n_questions }}</strong><span>题目</span></div><div><strong>{{ survey.n_responses }}</strong><span>答卷</span></div></div>
-    <div class="survey-tile-meta"><span>{{ survey.n_video }} 视频 · {{ survey.n_audio }} 音乐</span><span>量表 v{{ survey.schema_version }}</span></div>
-    <div class="survey-tile-primary">
-      {% if survey.status != 'archived' %}<button class="btn btn-primary btn-sm copy-link" type="button" data-path="{{ survey.public_path }}" data-base="{{ share_base }}">{{ icon('file', 14) }} 复制分享链接</button><a class="btn btn-soft btn-sm" href="{{ survey.public_path }}" target="_blank" rel="noreferrer" aria-label="预览 {{ survey.title }}">预览 {{ icon('external', 13) }}</a>
-      {% else %}<a class="btn btn-soft btn-sm" href="/survey-data?survey_id={{ survey.id }}&tab=responses">{{ icon('chart', 14) }} 浏览归档答卷</a><span class="hint">历史导入，不对外发布</span>{% endif %}
+  <article class="survey-tile" data-record-resource="surveys" data-record-id="{{ survey.id }}" data-survey="{{ survey.id }}" data-status="{{ survey.status }}" data-title="{{ survey.title }}" data-updated="{{ survey.updated_at }}" data-responses="{{ survey.n_responses }}" data-search="{{ survey.title }} {{ survey.description or '' }} {{ survey.id }} {{ (survey.record_meta|default({})).notes }} {{ (survey.record_meta|default({})).tags|join(' ') }}">
+    <div class="survey-tile-top">
+      <div class="survey-tile-context"><span class="survey-kind">{{ icon('file', 15) }} {% if survey.status == 'archived' %}历史问卷{% elif survey.n_video and survey.n_audio %}音视频问卷{% elif survey.n_video %}视频问卷{% elif survey.n_audio %}音乐问卷{% else %}自定义问卷{% endif %}</span><span class="survey-created">更新于 {{ (survey.updated_at or survey.created_at)[:10] }}</span></div>
+      <div class="survey-tile-controls">
+        <span class="survey-state survey-state-{{ survey.status }}"><i></i>{{ '收集中' if survey.status == 'open' else '已归档' if survey.status == 'archived' else '已关闭' }}</span>
+        <details class="survey-more">
+          <summary aria-label="{{ survey.title }}的更多操作" title="更多操作"><span aria-hidden="true">···</span></summary>
+          <div class="survey-more-menu" data-record-actions>
+            {% if survey.status != 'archived' %}
+            <a href="{{ survey.public_path }}" target="_blank" rel="noreferrer">{{ icon('external', 14) }} 预览问卷</a>
+            {% if survey.status == 'open' %}<button class="toggle-survey" type="button" data-id="{{ survey.id }}">{{ icon('lock', 14) }} 关闭问卷</button>{% endif %}
+            {% else %}<a href="/surveys/{{ survey.id }}/edit">{{ icon('file', 14) }} 查看问卷配置</a>{% endif %}
+            <span class="survey-menu-note">量表版本 v{{ survey.schema_version }}</span>
+          </div>
+        </details>
+      </div>
     </div>
-    <div class="survey-tile-footer"><span class="survey-created">{{ survey.created_at[:10] }}</span><div class="survey-tile-actions"><a href="/surveys/{{ survey.id }}/edit" aria-label="编辑 {{ survey.title }}">编辑</a>{% if survey.status != 'archived' %}<button class="toggle-survey" type="button" data-id="{{ survey.id }}">{{ '关闭' if survey.status == 'open' else '重新开放' }}</button><a href="/survey-data?survey_id={{ survey.id }}&tab=responses">答卷</a>{% endif %}</div></div>
+    <h2><a href="/surveys/{{ survey.id }}/edit" title="{{ survey.title }}">{{ survey.title }}</a></h2>
+    {% if survey.description %}<p class="survey-description" title="{{ survey.description }}">{{ survey.description }}</p>{% endif %}
+    <div class="survey-tile-meta">
+      <span>{{ survey.n_materials }} 个素材{% if survey.n_video and survey.n_audio %}（{{ survey.n_video }} 视频 / {{ survey.n_audio }} 音乐）{% endif %}</span><span>{{ survey.n_questions }} 道题目</span>
+    </div>
+    <a class="survey-response-link" href="/survey-data?survey_id={{ survey.id }}&tab=responses" aria-label="查看 {{ survey.title }} 的 {{ survey.n_responses }} 份答卷">
+      <span><strong>{{ survey.n_responses }}</strong><span>份答卷</span></span><span class="survey-response-cta">查看答卷 {{ icon('arrow', 15) }}</span>
+    </a>
+    <div class="survey-tile-footer">
+      <div class="survey-tile-primary">
+        {% if survey.status != 'archived' %}
+        <a class="btn btn-soft btn-sm" href="/surveys/{{ survey.id }}/edit">{{ icon('sliders', 14) }} 编辑问卷</a>
+        {% if survey.status == 'open' %}<button class="btn btn-primary btn-sm copy-link" type="button" data-path="{{ survey.public_path }}" data-base="{{ share_base }}">{{ icon('external', 14) }} 复制链接</button>
+        {% else %}<button class="btn btn-primary btn-sm toggle-survey" type="button" data-id="{{ survey.id }}">{{ icon('play', 14) }} 重新开放</button>{% endif %}
+        {% else %}<span class="survey-archive-note">{{ icon('lock', 13) }} 历史导入归档 · 不对外收集</span>{% endif %}
+      </div>
+    </div>
   </article>
 {% endfor %}
 </div>

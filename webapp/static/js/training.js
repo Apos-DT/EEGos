@@ -3,6 +3,14 @@
   let busy = false;
   const method = () => $("input[name='model']:checked").value;
   const isDDA = () => method() === "dda";
+  function setTrainingView(view) {
+    $(".training-layout").dataset.trainingView = view;
+    ["config", "monitor"].forEach(name => {
+      const tab = document.getElementById(name === "config" ? "trainingConfigTab" : "trainingMonitorTab");
+      tab.setAttribute("aria-selected", String(name === view));
+      tab.tabIndex = name === view ? 0 : -1;
+    });
+  }
 
   function syncConfig() {
     const dda = isDDA();
@@ -18,19 +26,18 @@
     const subjects = $("#ddaSubject").value ? 1 : 15;
     const folds = crossSession ? sessions : sessions * subjects;
     const limit = Number($("#ddaMaxFolds").value);
-    $("#ddaFoldHint").textContent = `当前配置运行 ${limit > 0 ? Math.min(limit, folds) : folds} 折，每折 ${$("#ddaEpochs").value} 轮。完整跨被试为 45 折，跨会话为 3 折。`;
     $("#quickDemo").hidden = dda;
     const semi = $("#ddaAlgorithm").value === "SDDA";
     $("#ddaLabelField").hidden = !semi;
-    $("#ddaAlgorithmHint").textContent = semi ? "部分目标 trial 标签参与训练，其余目标数据无标签适配。" : "目标标签仅用于评估，不参与梯度更新。";
+    $("#ddaAlgorithmHint").textContent = semi ? "目标域少量真标签参与训练" : "目标标签仅用于评估";
     document.querySelectorAll("[data-dualview]").forEach((field) => {
       field.hidden = method() !== "dualview";
       field.querySelector("input").disabled = method() !== "dualview";
     });
-    $("#methodHint").textContent = dda ? "DDA 使用论文 MLP 骨干进行域适配；在下方选择适配变体与目标域。" : "所选模型使用特征数据集训练；验证与测试划分由评估协议决定。";
+    $("#methodHint").textContent = dda ? "MLP 骨干 · 动态域适配" : $("input[name='model']:checked").closest(".model-card").dataset.description;
     const modelLabel = {dda: "DDA", mlp: "MLP", dgcnn: "DGCNN", dualview: "DualView"}[method()];
     $("#experimentSummary").textContent = dda
-      ? `${modelLabel} / ${$("#ddaAlgorithm").value} · SEED-IV · ${crossSession ? "跨会话" : "跨被试"} · ${limit > 0 ? Math.min(limit, folds) : folds} 折 × ${$("#ddaEpochs").value} 轮 · 种子 ${$("#ddaSeed").value}`
+      ? `${modelLabel} / ${$("#ddaAlgorithm").value} · SEED-IV · ${crossSession ? "跨会话" : "跨被试"} · 运行 ${limit > 0 ? Math.min(limit, folds) : folds}/${folds} 折 × ${$("#ddaEpochs").value} 轮 · 种子 ${$("#ddaSeed").value}`
       : `${modelLabel} · ${$("#datasetSelect").selectedOptions[0]?.textContent || "请选择数据集"} · ${$("#standardSetting").selectedOptions[0].textContent} · 最多 ${$("#epochs").value} 轮`;
     $("#standardPipeline").hidden = dda;
     $("#ddaIdle").hidden = !dda;
@@ -83,7 +90,7 @@
       state.className = `badge badge-${tone || "neutral"}`;
     }
     const hint = document.getElementById("runHint");
-    if (hint && text !== "IDLE") hint.textContent = "任务日志实时写入下方控制台";
+    if (hint && text !== "IDLE") hint.textContent = {RUNNING:"已提交 · 进度见本机监控", DONE:"已完成 · 结果已归档", FAILED:"未完成 · 请查看错误日志"}[text] || text;
   }
 
   function renderResult(job) {
@@ -124,7 +131,10 @@
     if (result.kind === "external_reproduction") {
       $("#resultNote").textContent += ` · 目标测试峰值 ${EEG.formatPct(overall.paper_protocol_peak_accuracy)}（用于选取训练峰值，可能偏乐观）`;
     }
-    document.getElementById("trainingResult").scrollIntoView({ behavior: "smooth", block: "start" });
+    setTrainingView("monitor");
+    const pane = $("#trainingMonitorPane");
+    const resultTop = $("#trainingResult").getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+    pane.scrollTo({top:resultTop, behavior:"smooth"});
     setState("DONE", "green");
   }
 
@@ -136,9 +146,9 @@
     const samples = Number(option?.dataset?.samples || 0);
     const hint = document.getElementById("datasetHint");
     if (samples > 10000) {
-      if (hint) hint.textContent = "大数据集：建议先用 15 epochs / batch 128；完整 15 折 LOSO 可能较久，可先用 MLP 跑基线。";
+      if (hint) hint.textContent = "大数据可先用 MLP 检查流程";
     } else {
-      if (hint) hint.textContent = "数据量较小，可先使用默认参数检查训练流程。";
+      if (hint) hint.textContent = "可先用默认参数检查流程";
     }
   }
 
@@ -158,7 +168,6 @@
     setState("RUNNING", "blue");
     EEG.startJob(dda ? "/api/integrations/dda/run" : "/api/train/run", payload, {
       button,
-      consoleId: "trainingConsole",
       pollTimeout: dda ? 7 * 24 * 60 * 60 * 1000 : undefined,
       successMessage: "训练完成，指标已加载。",
       onSuccess: (job) => { busy = false; syncConfig(); renderResult(job); },
@@ -185,6 +194,19 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    const tabs = Array.from(document.querySelectorAll(".training-pane-tabs [role='tab']"));
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => setTrainingView(index === 0 ? "config" : "monitor"));
+      tab.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        const target = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
+        setTrainingView(target === 0 ? "config" : "monitor"); tabs[target].focus(); event.preventDefault();
+      });
+    });
+    $("#monitorShortcut").addEventListener("click", () => {
+      setTrainingView("monitor"); $("#trainingMonitorPane").scrollTop = 0;
+      $("#trainingMonitorPane").focus({preventScroll:true});
+    });
     const form = document.getElementById("trainingForm");
     if (form) {
       form.addEventListener("submit", submit);
@@ -209,6 +231,7 @@
     if (quick) quick.addEventListener("click", quickDemo);
     const top = document.getElementById("topTrain");
     if (top) top.addEventListener("click", () => {
+      setTrainingView("config");
       const form = document.getElementById("trainingForm");
       if (form) form.requestSubmit();
     });

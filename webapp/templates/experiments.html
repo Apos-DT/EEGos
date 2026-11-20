@@ -1,98 +1,53 @@
 {% extends "base.html" %}
-{% from "macros.html" import icon, badge %}
+{% from "macros.html" import icon %}
 
 {% block actions %}
-  <a class="btn btn-soft" href="/training">{{ icon('cpu', 15) }} 新建训练</a>
-  <a class="btn btn-primary" href="/api/experiments" target="_blank">{{ icon('external', 15) }} 指标 API</a>
+<a class="btn btn-soft" href="/api/experiments" target="_blank" rel="noreferrer">{{ icon('file', 14) }} 指标数据</a>
+<a class="btn btn-primary" href="/training">{{ icon('play', 14) }} 新建训练</a>
 {% endblock %}
 
 {% block content %}
-<div class="exp-hero">
-  <div class="exp-card">
-    <div class="name">最高准确率记录</div>
-    <div class="sub">{% if data.best %}{{ data.best.label }}{% else %}暂无实验{% endif %}</div>
-    <div class="score"><strong>{{ data.best.accuracy|pct if data.best else '—' }}</strong><span>Accuracy</span></div>
-    <div class="bar"><span style="width:{{ (data.best.accuracy * 100) if data.best else 0 }}%"></span></div>
-    <div class="meta"><span>Macro-F1 {{ data.best.macro_f1|pct if data.best else '—' }}</span><span>κ {{ '%.3f'|format(data.best.cohen_kappa or 0) if data.best else '—' }}</span></div>
-  </div>
-  <div class="exp-card">
-    <div class="name">实验总数</div>
-    <div class="sub">集中管理训练结果与实验报告</div>
-    <div class="score"><strong>{{ data.count }}</strong><span>runs</span></div>
-
-    <div class="meta"><span>跨被试 / 跨会话 / 被试依赖</span><span>本地保存</span></div>
-  </div>
-  <div class="exp-card">
-    <div class="name">评估纪律</div>
-    <div class="sub">跨被试结果必须来自折外预测</div>
-    <div class="score"><strong>OOF</strong><span>汇总方式</span></div>
-
-    <div class="meta"><span>被试隔离</span><span>训练折内标准化</span></div>
-  </div>
+<div class="experiment-overview" aria-label="实验概况">
+  <span>实验记录 <strong>{{ data.count }}</strong></span>
+  <span>真实数据 <strong>{{ data.real_count }}</strong></span>
+  <span>可查看报告 <strong>{{ data.experiments|selectattr('has_report')|list|length }}</strong></span>
+  {% if data.experiments %}<span class="experiment-last-update">最近记录 {{ (data.experiments[0].created_at or '')[:16]|replace('T', ' ') }}</span>{% endif %}
 </div>
-
-<div class="layout-2" style="margin-top:16px">
-  <section class="panel">
-    <div class="panel-head"><div><h2 class="panel-title">运行对比</h2><p class="panel-sub">按 Accuracy 浏览记录；不同数据、协议与标签预算的结果不用于直接排名</p></div></div>
-    <div id="experimentChart" class="chart-wrap"></div>
-  </section>
-  <section class="panel">
-    <div class="panel-head"><div><h2 class="panel-title">比较前先确认</h2><p class="panel-sub">论文表格的 4 个最低要求</p></div></div>
-    <div class="panel-body">
-      <div class="pipeline">
-        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一数据版本</div><div class="pipe-detail">manifest / SHA-256 一致</div></div></div>
-        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一划分与种子</div><div class="pipe-detail">folds.json 可复现</div></div></div>
-        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一评估设置</div><div class="pipe-detail">LOSO 不混被试依赖</div></div></div>
-        <div class="pipe-step done"><span class="pipe-node">{{ icon('check', 12) }}</span><div><div class="pipe-label">同一指标口径</div><div class="pipe-detail">OOF + 95% CI + 最差被试</div></div></div>
-      </div>
-    </div>
-  </section>
-</div>
-
-<section class="panel" style="margin-top:16px">
-  <div class="table-tools">
-    <div class="search-box">{{ icon('search', 14) }}<input id="expSearch" placeholder="搜索运行 / 模型…"></div>
-    <div class="chips">
-      <button class="chip active" data-filter="all">全部</button>
-      <button class="chip" data-filter="loso">LOSO</button>
-      <button class="chip" data-filter="cross-session">跨会话</button>
-      <button class="chip" data-filter="subject-dependent">被试依赖</button>
-    </div>
-    <span class="table-count" id="expCount">{{ data.count }} 次</span>
+<section class="panel experiment-records">
+  <div class="panel-head">
+    <h2 class="panel-title">实验列表 <span class="experiment-caption">同数据、同协议下比较指标</span></h2>
+    <span class="table-count" id="expCount" role="status">{{ data.count }} 条记录</span>
   </div>
-  {% if data.experiments %}
-  <div class="table-wrap">
+  <div class="experiment-toolbar">
+    <div class="search-box">{{ icon('search', 14) }}<input id="expSearch" type="search" placeholder="搜索运行编号、方法…" aria-label="搜索实验记录"></div>
+    <select class="select" id="expModel" aria-label="按方法筛选"><option value="">全部方法</option></select>
+    <select class="select" id="expProtocol" aria-label="按协议筛选"><option value="">全部协议</option><option value="loso">跨被试 LOSO</option><option value="cross-session">跨会话</option><option value="subject-dependent">被试依赖</option></select>
+    <select class="select" id="expSort" aria-label="实验排序"><option value="recent">最近记录</option><option value="accuracy">Accuracy 从高到低</option><option value="f1">Macro-F1 从高到低</option></select>
+    <label class="checkline"><input type="checkbox" id="expHideDemo"> 隐藏验收记录</label>
+  </div>
+  <div class="experiment-list-viewport" id="experimentList" tabindex="0" role="region" aria-label="实验记录列表，可在内部滚动">
     <table class="data" id="expTable">
-      <thead><tr><th>运行</th><th>模型</th><th>设置</th><th class="num">样本/被试</th><th class="num">Accuracy</th><th class="num">Balanced</th><th class="num">Macro-F1</th><th class="num">κ</th><th>时间</th><th>操作</th></tr></thead>
+      <colgroup><col><col class="experiment-col-protocol"><col class="experiment-col-folds"><col class="experiment-col-samples"><col class="experiment-col-metric"><col class="experiment-col-metric"><col class="experiment-col-time"><col class="experiment-col-actions"></colgroup>
+      <thead><tr><th>实验 / 运行编号</th><th>评估协议</th><th class="num">记录折数</th><th class="num">样本 / 被试</th><th class="num">Accuracy</th><th class="num">Macro-F1</th><th>记录时间</th><th class="experiment-actions-col">操作</th></tr></thead>
       <tbody>
       {% for run in data.experiments %}
-        <tr data-search="{{ run.label }} {{ run.model }} {{ run.setting }}" data-group="{{ run.setting }}">
-          <td class="strong"><span class="run-dot {{ 'demo' if run.is_demo else '' }}"></span>{{ run.label }}{% if run.is_demo %} <span class="badge badge-amber">验收</span>{% endif %}</td>
-          <td>{{ run.model }}</td>
-          <td><span class="badge {{ 'badge-blue' if run.setting == 'loso' else 'badge-violet' }}">{{ run.setting_label }}</span></td>
-          <td class="num">{{ run.n_samples }} / {{ run.n_subjects }}</td>
-          <td class="num strong">{{ run.accuracy|pct }}</td>
-          <td class="num">{{ run.balanced_accuracy|pct }}</td>
-          <td class="num">{{ run.macro_f1|pct }}</td>
-          <td class="num">{{ '%.3f'|format(run.cohen_kappa or 0) }}</td>
-          <td class="muted">{{ (run.created_at or '')[:16] }}</td>
-          <td>
-            <div class="flex gap-1">
-              {% if run.report_url %}<a class="btn btn-soft btn-sm" href="{{ run.report_url }}" target="_blank">报告</a>{% endif %}
-              <a class="btn btn-soft btn-sm" href="/api/experiments/{{ run.id }}" target="_blank">JSON</a>
-            </div>
-          </td>
-        </tr>
+      <tr data-record-resource="experiments" data-record-id="{{ run.id }}" data-search="{{ run.label }} {{ run.id }} {{ run.model }} {{ run.setting_label }} {{ (run.record_meta|default({})).notes }} {{ (run.record_meta|default({})).tags|join(' ') }}" data-model="{{ run.model }}" data-group="{{ run.setting }}" data-demo="{{ '1' if run.is_demo else '0' }}" data-created="{{ run.created_at or '' }}" data-accuracy="{{ run.accuracy }}" data-f1="{{ run.macro_f1 }}">
+        <td class="experiment-name"><div><strong>{{ (run.record_meta|default({})).title or run.model or '未命名方法' }}</strong>{% if run.is_demo %}<span class="badge badge-amber">软件验收</span>{% endif %}</div><span class="experiment-run-id" title="{{ run.id }}">{{ run.id }}</span></td>
+        <td><span class="badge badge-neutral">{{ run.setting_label }}</span></td>
+        <td class="num">{{ run.folds if run.folds else '—' }}</td>
+        <td class="num">{{ run.n_samples }} <span class="muted">/ {{ run.n_subjects }}</span></td>
+        <td class="num experiment-accuracy">{{ run.accuracy|pct }}</td>
+        <td class="num">{{ run.macro_f1|pct }}</td>
+        <td class="experiment-time">{{ (run.created_at or '')[:10] }}<span>{{ (run.created_at or '')[11:16] }}</span></td>
+        <td class="experiment-actions-col"><div class="experiment-row-actions" data-record-actions>{% if run.report_url %}<a class="btn btn-soft btn-sm" href="{{ run.report_url }}" target="_blank" rel="noreferrer">报告</a>{% endif %}<a class="btn btn-soft btn-sm" href="/api/experiments/{{ run.id }}" target="_blank" rel="noreferrer" aria-label="查看 {{ run.id }} 的指标 JSON">指标</a></div></td>
+      </tr>
       {% endfor %}
       </tbody>
     </table>
+    <div class="empty experiment-empty" id="expEmpty" {% if data.experiments %}hidden{% endif %}><h3>{{ '没有匹配的实验' if data.experiments else '还没有实验记录' }}</h3><p>{{ '调整关键词或筛选条件后重试。' if data.experiments else '完成训练后，指标与报告会显示在这里。' }}</p>{% if data.experiments %}<button class="btn btn-soft btn-sm" id="expReset" type="button">重置筛选</button>{% else %}<a class="btn btn-primary btn-sm" href="/training">新建训练</a>{% endif %}</div>
   </div>
-  {% else %}
-  <div class="empty"><div class="empty-icon">{{ icon('activity', 26) }}</div><h3>还没有实验记录</h3><p>先在训练页跑一次合成数据 LOSO，验证软件链路。</p><a class="btn btn-primary btn-sm" href="/training">去训练 {{ icon('arrow', 14) }}</a></div>
-  {% endif %}
+  <div class="experiment-list-foot"><span>折数为本次已记录的评估折数；完整参数与其他指标见报告。</span><a href="/training" class="mini-link">查看训练任务 {{ icon('arrow', 13) }}</a></div>
 </section>
-
-<script type="application/json" id="experimentData">{{ data.experiments|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

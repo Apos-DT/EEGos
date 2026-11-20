@@ -83,7 +83,7 @@
         <thead><tr><th>任务</th><th>状态</th><th>提交</th><th>结果</th></tr></thead>
         <tbody>
         {% for job in jobs[:8] %}
-        <tr><td class="strong">{{ job.title }}</td><td><span class="badge {{ 'badge-green' if job.status == 'success' else 'badge-red' if job.status == 'failed' else 'badge-blue' }}">{{ job.status }}</span></td><td class="muted">{{ job.created_at[5:16] }}</td><td class="muted">{{ (job.error or job.result.get('run_id') or job.result.get('output') or '—')[:36] }}</td></tr>
+        <tr data-record-resource="jobs" data-record-id="{{ job.id }}"><td class="strong">{{ job.title }}</td><td><span class="badge {{ 'badge-green' if job.status == 'success' else 'badge-red' if job.status == 'failed' else 'badge-blue' }}">{{ job.status }}</span></td><td class="muted">{{ job.created_at[5:16] }}</td><td class="muted">{{ (job.error or job.result.get('run_id') or job.result.get('output') or '—')[:36] }}</td></tr>
         {% endfor %}
         </tbody>
       </table>

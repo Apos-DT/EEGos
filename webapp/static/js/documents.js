@@ -4,6 +4,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     const cards = $$(".doc-card");
+    const controller=new EEG.ListController({items:cards,searchText:card=>card.dataset.search,matches:(card,f)=>f.active==="all" || card.dataset.group===f.active});
     const input = document.getElementById("docSearch");
     const count = document.getElementById("docCount");
     const empty = document.getElementById("docEmpty");
@@ -11,13 +12,9 @@
     let active = "all";
     const apply = () => {
       const query = (input && input.value ? input.value : "").trim().toLowerCase();
-      let visible = 0;
-      cards.forEach((card) => {
-        const show = (active === "all" || card.dataset.group === active) &&
-          (!query || (card.dataset.search || "").toLowerCase().includes(query));
-        card.hidden = !show;
-        if (show) visible += 1;
-      });
+      const result=controller.update({query,filters:{active}});
+      cards.forEach(card=>{card.hidden=true;});result.items.forEach(card=>{card.hidden=false;});
+      const visible=result.total;
       if (count) count.textContent = `${visible} 份`;
       if (empty) empty.hidden = visible !== 0;
     };

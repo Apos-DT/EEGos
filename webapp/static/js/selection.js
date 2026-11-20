@@ -3,31 +3,7 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
   function bindTable() {
-    const table = document.getElementById("selectionTable");
-    if (!table) return;
-    const rows = Array.from(table.querySelectorAll("tbody tr"));
-    const input = document.getElementById("selectionSearch");
-    const count = document.getElementById("selectionCount");
-    const chips = $$(".chips .chip");
-    let active = "all";
-    const apply = () => {
-      const query = (input && input.value ? input.value : "").trim().toLowerCase();
-      let visible = 0;
-      rows.forEach((row) => {
-        const show = (active === "all" || row.dataset.group === active) &&
-          (!query || (row.dataset.search || "").toLowerCase().includes(query));
-        row.style.display = show ? "" : "none";
-        if (show) visible += 1;
-      });
-      if (count) count.textContent = `${visible} 条`;
-    };
-    if (input) input.addEventListener("input", apply);
-    chips.forEach((chip) => chip.addEventListener("click", () => {
-      chips.forEach((item) => item.classList.toggle("active", item === chip));
-      active = chip.dataset.filter || "all";
-      apply();
-    }));
-    apply();
+    EEG.filterTable({input:"selectionSearch",table:"selectionTable",count:"selectionCount",chips:".chips .chip"});
   }
 
   function submit(event) {

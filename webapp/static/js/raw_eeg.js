@@ -55,7 +55,7 @@
       const data=await EEG.api("/api/eeg/raw/runs");const container=$("rawHistory");container.replaceChildren();
       const reference=$("rawICAReference"),value=reference.value;reference.replaceChildren(node("option","选择成功的 ICA 审阅任务…"));reference.firstChild.value="";
       for (const r of data.runs) {
-        const row=node("div",undefined,"raw-history-row"),description=node("div");description.append(node("strong",r.run_id),node("p",`${({success:"已完成",running:"处理中",failed:"失败"})[r.status]||r.status} · ${r.started_at||""} · ${r.n_samples??"—"} 窗口`,"hint"));
+        const row=node("div",undefined,"raw-history-row"),description=node("div");row.dataset.recordResource="eeg_runs";row.dataset.recordId=r.run_id;description.append(node("strong",r.display_name||r.run_id),node("p",`${({success:"已完成",running:"处理中",failed:"失败"})[r.status]||r.status} · ${r.started_at||""} · ${r.n_samples??"—"} 窗口`,"hint"));
         const button=node("button","查看结果","btn btn-soft btn-sm");button.type="button";button.addEventListener("click",async()=>{try{renderResult(await EEG.api(`/api/eeg/raw/runs/${r.run_id}`));}catch(e){error(e.message);}});row.append(description,button);container.append(row);
         if(r.status==="success"&&r.ica?.mode==="review") {const option=node("option",r.run_id);option.value=r.run_id;reference.append(option);}
       }

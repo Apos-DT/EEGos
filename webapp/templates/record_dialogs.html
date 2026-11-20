@@ -1,0 +1,21 @@
+<dialog id="recordLibrary" class="record-dialog" aria-labelledby="recordLibraryTitle">
+  <header class="record-dialog-head"><h2 id="recordLibraryTitle">记录管理</h2><button type="button" class="btn btn-soft btn-sm" data-close-record="recordLibrary" aria-label="关闭记录管理">{{ icon('close', 16) }}</button></header>
+  <div class="record-library-tools">
+    <select class="select" id="recordResource" aria-label="记录类型"></select>
+    <input class="input" id="recordSearch" type="search" maxlength="200" placeholder="搜索名称、标签、备注…" aria-label="查询记录">
+    <select class="select" id="recordView" aria-label="记录状态"><option value="active">当前记录</option><option value="trash">回收站</option></select>
+    <button type="button" class="btn btn-primary btn-sm" id="recordCreate">新增</button>
+    <input type="file" id="recordUpload" hidden>
+  </div>
+  <p id="recordLibraryError" class="record-error" role="alert" hidden></p>
+  <div class="record-library-body" tabindex="0" aria-label="管理记录列表，可滚动"><table class="data"><thead><tr><th>名称 / 标识</th><th>标签 / 备注</th><th>操作</th></tr></thead><tbody id="recordRows"></tbody></table><p class="record-empty" id="recordNoItems" hidden>暂无匹配的记录</p></div>
+  <footer class="record-dialog-foot"><span id="recordPageInfo" role="status"></span><div><button type="button" class="btn btn-soft btn-sm" id="recordPrevious">上一页</button><button type="button" class="btn btn-soft btn-sm" id="recordNext">下一页</button></div></footer>
+</dialog>
+<dialog id="recordEditor" class="record-dialog record-editor" aria-labelledby="recordEditorTitle">
+  <header class="record-dialog-head"><h2 id="recordEditorTitle">编辑记录</h2><button type="button" class="btn btn-soft btn-sm" data-close-record="recordEditor" aria-label="关闭编辑">{{ icon('close', 16) }}</button></header>
+  <form id="recordEditForm">
+    <div class="record-editor-body"><p class="hint" id="recordIdentity"></p><div class="field"><label for="recordTitle">显示名称</label><input class="input" id="recordTitle" maxlength="160"></div><div class="field"><label for="recordTags">标签 <span class="hint">用逗号分隔</span></label><input class="input" id="recordTags" maxlength="800"></div><div class="field"><label for="recordNotes">备注</label><textarea class="textarea" id="recordNotes" rows="4" maxlength="4000"></textarea></div><details><summary>查看原始记录 <span class="hint">只读</span></summary><pre id="recordSource"></pre></details><p id="recordEditError" class="record-error" role="alert" hidden></p></div>
+    <footer class="record-dialog-foot"><span class="hint">原始内容和实验指标保留。</span><div><button type="button" class="btn btn-soft btn-sm" id="recordEditorDelete">移入回收站</button><button type="submit" class="btn btn-primary btn-sm" id="recordSave">保存</button></div></footer>
+  </form>
+</dialog>
+<dialog id="recordDelete" class="record-dialog record-confirm" aria-labelledby="recordDeleteTitle"><header class="record-dialog-head"><h2 id="recordDeleteTitle">移入回收站</h2></header><div class="record-editor-body"><strong id="recordDeleteName"></strong><p class="hint">从列表移除，保留源文件和实验指标；可在回收站恢复。</p><p id="recordDeleteError" class="record-error" role="alert" hidden></p></div><footer class="record-dialog-foot"><button type="button" class="btn btn-soft btn-sm" data-close-record="recordDelete">取消</button><button type="button" class="btn btn-primary btn-sm" id="recordDeleteConfirm">移入回收站</button></footer></dialog>
