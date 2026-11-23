@@ -11,6 +11,7 @@ dist/
 # ===== 原始数据与大型数据集（体积/许可/版权原因，不入库）=====
 山科数据集/
 data/SEED_IV/
+/data/external/
 data/media/
 data/raw/
 data/interim/
@@ -83,3 +84,4 @@ desktop.ini
 # Local research handoff and personal project memory
 /.codex/project-memory/
 /data/record_management/
+/data/emostudio.sqlite3*
