@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-APP_NAME = "EEG-EmoStudio"
+APP_NAME = "EmoStudio"
 APP_SUBTITLE = "实验采集 · EEG 处理 · 模型训练"
 APP_VERSION = "0.5.0"
 
@@ -12,6 +12,12 @@ NAV_GROUPS = [
         "items": [
             {"key": "surveys", "label": "问卷管理", "href": "/surveys", "icon": "play"},
             {"key": "survey_data", "label": "问卷数据", "href": "/survey-data", "icon": "chart"},
+        ],
+    },
+    {
+        "label": "数据资源",
+        "items": [
+            {"key": "datasets", "label": "数据集", "href": "/datasets", "icon": "database"},
             {"key": "media", "label": "素材库", "href": "/media", "icon": "sliders"},
         ],
     },
@@ -19,7 +25,6 @@ NAV_GROUPS = [
         "label": "EEG 信号",
         "items": [
             {"key": "eeg", "label": "原始 EEG 处理", "href": "/eeg", "icon": "waves"},
-            {"key": "datasets", "label": "数据集与特征", "href": "/datasets", "icon": "database"},
         ],
     },
     {
@@ -51,7 +56,7 @@ PAGE_META = {
     "audit": "历史预评价审计",
     "selection": "刺激库",
     "eeg": "原始 EEG 处理",
-    "datasets": "数据集与特征",
+    "datasets": "数据集",
     "training": "模型训练",
     "experiments": "实验记录",
     "documents": "项目文档",
@@ -165,7 +170,7 @@ PAGE_DESCRIPTIONS = {
     "audit": "查看历史预评价数据、质量指标与审计记录。",
     "selection": "按类别与质量要求，整理本次实验的刺激素材。",
     "eeg": "导入原始 EEG，完成清洗、分段与特征构建。",
-    "datasets": "管理原始数据与特征集，为模型实验准备输入。",
+    "datasets": "集中查看研究数据集的来源、模态与接入状态。",
     "training": "选择研究方法、配置训练实验，监控本机后台任务。",
     "experiments": "回顾模型运行、比较指标并查看完整实验报告。",
     "documents": "查找研究、设计与使用文档，预览或下载所需资料。",

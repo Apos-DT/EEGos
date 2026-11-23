@@ -11,6 +11,7 @@ import numpy as np
 from .data.features import aggregate_windows, compute_de_features
 from .data.manifest import validate_feature_arrays, write_feature_dataset
 from .data.preprocess import PreprocessConfig, preprocess_array
+from .data.raw_npz import raw_eeg_arrays
 
 
 def build_features_from_raw(
@@ -35,25 +36,16 @@ def build_features_from_raw(
 
     source = Path(raw_path)
     with np.load(source, allow_pickle=False) as raw:
-        required = {"x", "y", "subjects"}
-        missing = required - set(raw.files)
-        if missing:
-            raise ValueError(f"原始数组缺少字段：{sorted(missing)}")
-        x = np.asarray(raw["x"], dtype=np.float64)
-        y = np.asarray(raw["y"], dtype=np.int64)
-        subjects = np.asarray(raw["subjects"]).astype(str)
-        file_fs = float(raw["fs"]) if "fs" in raw.files else None
+        x, y, subjects, file_fs = raw_eeg_arrays(raw)
+        x = x.astype(np.float64, copy=False)
+        y = y.astype(np.int64, copy=False)
+        subjects = subjects.astype(str)
         class_names = (
             np.asarray(raw["class_names"]).astype(str).tolist() if "class_names" in raw.files else None
         )
     effective_fs = float(fs if fs is not None else file_fs) if (fs is not None or file_fs) else None
     if not effective_fs:
         raise ValueError("未提供采样率：请在 NPZ 中写入 fs 或通过参数传入")
-    if x.ndim != 3:
-        raise ValueError(f"x 应为 (trials, channels, samples)，实际 {x.shape}")
-    if len(x) != len(y) or len(x) != len(subjects):
-        raise ValueError("x/y/subjects 数量不一致")
-
     config = PreprocessConfig(
         fs=effective_fs,
         bandpass=bandpass,

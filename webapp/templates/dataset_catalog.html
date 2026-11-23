@@ -1,0 +1,80 @@
+{% set statuses = {
+  'available': ('原始文件已就位', 'green'),
+  'annotations': ('标注已就位 · 音视频未就位', 'neutral'),
+  'partial': ('仅有部分下载', 'amber'),
+  'unverified': ('发现本地文件 · 待核验', 'amber'),
+  'access_required': ('待申请授权', 'amber'),
+  'missing': ('未发现原始数据', 'neutral')
+} %}
+{% set eeg_states = {
+  'no_eeg': '无 EEG',
+  'adapter_pending': '含 EEG · 待适配',
+  'files_missing': '含 EEG · 缺少本地文件',
+  'ready': '支持 EEG 制备'
+} %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2 class="panel-title">数据集目录</h2><p class="panel-sub">按模态查找数据，查看用途、文件结构与接入状态</p></div>
+    <span class="muted small" id="catalogCount" role="status">{{ catalog|length }} 项</span>
+  </div>
+  <div class="panel-body">
+    <div class="catalog-toolbar" role="search" aria-label="查找数据集">
+      <div class="search-box">
+        {{ icon('search', 15) }}
+        <input id="catalogSearch" type="search" placeholder="搜索名称或用途…" aria-label="搜索数据集">
+      </div>
+      <select class="select" id="catalogModality" aria-label="筛选模态">
+        <option value="">全部模态</option>
+        {% for modality in ('EEG', '眼动', '文本', '音频', '视频', '动作捕捉') %}
+        <option>{{ modality }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="table-scroll catalog-table" role="region" aria-label="数据集列表" tabindex="0">
+      <table class="data">
+        <thead><tr><th>数据集</th><th>模态</th><th>用途</th><th>本地文件</th><th>EEG 制备</th><th>操作</th></tr></thead>
+        <tbody id="catalogRows">
+          {% for source in catalog %}
+          <tr data-source="{{ source.id }}" data-modalities="{{ source.modalities|join('|') }}">
+            <td><strong>{{ source.name }}</strong></td><td>{{ source.modalities|join(' / ') }}</td>
+            <td>{{ source.task }}</td>
+            <td><span class="badge badge-{{ statuses[source.local_status][1] }}">{{ statuses[source.local_status][0] }}</span></td>
+            <td>{{ eeg_states[source.eeg_preparation] }}</td>
+            <td><button class="btn btn-soft btn-sm" type="button" data-catalog-detail="{{ source.id }}">详情</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p id="catalogEmpty" class="muted small" hidden>没有符合条件的数据集。</p>
+    <div class="form-actions" id="catalogPager" hidden>
+      <button class="btn btn-soft btn-sm" type="button" id="catalogPrev">上一页</button>
+      <span class="small muted" id="catalogPage"></span>
+      <button class="btn btn-soft btn-sm" type="button" id="catalogNext">下一页</button>
+    </div>
+  </div>
+</section>
+{% for source in catalog %}
+<template id="catalogDetail-{{ source.id }}">
+  <dl class="kv">
+    <dt>模态</dt><dd>{{ source.modalities|join(' / ') }}</dd>
+    <dt>用途</dt><dd>{{ source.task }}</dd>
+    <dt>数据结构</dt><dd>{{ source.structure }}</dd>
+    <dt>本地目录</dt><dd><code>{{ source.local_path }}</code></dd>
+    <dt>本地文件</dt><dd>{{ statuses[source.local_status][0] }}</dd>
+    <dt>EEG 制备</dt><dd>{{ eeg_states[source.eeg_preparation] }}</dd>
+    <dt>获取方式</dt><dd>{{ source.access }}</dd>
+  </dl>
+  <div class="form-actions">
+    <a class="btn btn-soft btn-sm" href="{{ source.source_url }}" target="_blank" rel="noopener noreferrer">官方来源</a>
+    {% if source.eeg_preparation == 'ready' %}<a class="btn btn-primary btn-sm" href="{{ source.eeg_workflow_url }}">处理 {{ source.name }} 原始脑电</a>{% endif %}
+  </div>
+</template>
+{% endfor %}
+<dialog class="record-dialog" id="catalogDialog" aria-labelledby="catalogTitle">
+  <div class="record-dialog-head">
+    <h2 id="catalogTitle"></h2>
+    <form method="dialog"><button class="btn btn-soft btn-sm">关闭</button></form>
+  </div>
+  <div class="panel-body" id="catalogDetail" style="overflow:auto"></div>
+</dialog>

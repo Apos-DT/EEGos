@@ -11,6 +11,7 @@ import socket
 import uvicorn
 
 from .config import ACCESS_TOKEN, LOOPBACK_HOSTS, WEB_HOST, WEB_PORT, WEB_RELOAD
+from .content import APP_NAME
 
 
 def _lan_ip() -> str:
@@ -30,7 +31,7 @@ def main() -> None:
     lan_url = f"http://{lan}:{WEB_PORT}"
 
     print("=" * 62)
-    print("EEG-EmoStudio 工作台")
+    print(f"{APP_NAME} 工作台")
     print(f"  本机访问 : {local_url}")
     if WEB_HOST in LOOPBACK_HOSTS:
         print("  局域网   : 未开放（EEG_WEB_HOST=127.0.0.1，被试无法访问）")

@@ -1,17 +1,30 @@
 {% extends "base.html" %}
 {% from "macros.html" import icon, badge, job_console %}
 
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', path='css/datasets.css') }}">{% endblock %}
+{% block footer %}{% endblock %}
+
 {% block actions %}
+  {% if tab == 'eeg' %}
   <a class="btn btn-soft" href="#uploadCard">{{ icon('upload', 15) }} 上传 raw.npz</a>
   <a class="btn btn-primary" href="/training">{{ icon('cpu', 15) }} 去训练</a>
+  {% endif %}
 {% endblock %}
 
 {% block content %}
+<nav class="tabs dataset-workspace-tabs" aria-label="数据集工作区">
+  <a class="tab {{ 'active' if tab == 'catalog' }}" href="/datasets"{% if tab == 'catalog' %} aria-current="page"{% endif %}>数据集目录</a>
+  <a class="tab {{ 'active' if tab == 'eeg' }}" href="/datasets?tab=eeg"{% if tab == 'eeg' %} aria-current="page"{% endif %}>EEG 特征制备</a>
+</nav>
+{% if tab == 'catalog' %}
+  {% include 'dataset_catalog.html' %}
+{% else %}
 <div class="layout-2-wide">
   <div class="stack">
     <section class="panel" id="uploadCard">
-      <div class="panel-head"><div><h2 class="panel-title">接入原始数据</h2><p class="panel-sub">上传 <code class="mono">raw.npz</code>：x / y / subjects / fs；文件只保存在本机。</p></div><span class="badge badge-neutral">≤ 300 MB</span></div>
+      <div class="panel-head"><div><h2 class="panel-title">导入 EEG 时间序列</h2><p class="panel-sub">上传已整理为 raw.npz 的 EEG 导联信号。SEED-IV MAT 请从原始 EEG 处理页导入。</p></div><span class="badge badge-neutral">≤ 300 MB</span></div>
       <div class="panel-body">
+        <label class="checkline"><input id="rawEegConfirmed" type="checkbox"> 我确认 x 是 EEG 导联的原始时间序列</label>
         <div class="dropzone" id="dropzone" role="button" tabindex="0">
           {{ icon('upload', 28) }}
           <h3>拖拽 raw.npz 到这里，或点击选择文件</h3>
@@ -28,7 +41,7 @@
       <div class="panel-body">
         <form id="featureForm" class="form-grid">
           <div class="field full">
-            <label for="rawSelect">原始数据</label>
+            <label for="rawSelect">EEG 时间序列</label>
             <select class="select" id="rawSelect" name="raw_id" required>
               <option value="">选择 raw.npz…</option>
               {% for raw in raws %}
@@ -50,7 +63,7 @@
 
   <div class="stack">
     <section class="panel">
-      <div class="panel-head"><div><h2 class="panel-title">原始数据</h2><p class="panel-sub">只读；上传后先做质量检查再提特征</p></div><span class="badge badge-neutral">{{ raws|length }} 个文件</span></div>
+      <div class="panel-head"><div><h2 class="panel-title">EEG 原始文件</h2><p class="panel-sub">从本机 EEG 工作区读取 raw.npz</p></div><span class="badge badge-neutral">{{ raws|length }} 个文件</span></div>
       <div class="panel-body">
         {% if raws %}
         {% for raw in raws %}
@@ -113,8 +126,13 @@
 </div>
 
 {{ job_console('featureConsole', '特征构建任务', true) }}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/datasets.js') }}"></script>
+{% if tab == 'catalog' %}
+<script src="{{ url_for('static', path='js/dataset_catalog.js') }}?v=eeg-input-1"></script>
+{% else %}
+<script src="{{ url_for('static', path='js/datasets.js') }}?v=eeg-input-1"></script>
+{% endif %}
 {% endblock %}

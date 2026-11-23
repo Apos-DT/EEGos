@@ -4,6 +4,12 @@
 
   function upload(file) {
     if (!file) return;
+    const confirmed = document.getElementById("rawEegConfirmed");
+    if (!confirmed.checked) {
+      EEG.toast("请先确认文件内容是 EEG 导联的时间序列。", "error");
+      confirmed.focus();
+      return;
+    }
     if (!file.name.toLowerCase().endsWith(".npz")) {
       EEG.toast("请选择 .npz 文件。", "error");
       return;
@@ -12,7 +18,8 @@
     const progress = document.getElementById("uploadProgress");
     const bar = progress ? progress.querySelector("span") : null;
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/raw/upload?filename=${encodeURIComponent(file.name)}`);
+    const params = new URLSearchParams({filename: file.name, eeg_confirmed: "true"});
+    xhr.open("POST", `/api/raw/upload?${params}`);
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     if (progress) progress.classList.add("show");
     if (zone) zone.classList.add("dragover");
@@ -105,7 +112,10 @@
       zone.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") input.click();
       });
-      input.addEventListener("change", () => upload(input.files[0]));
+      input.addEventListener("change", () => {
+        upload(input.files[0]);
+        input.value = "";
+      });
       ["dragenter", "dragover"].forEach((name) => zone.addEventListener(name, (event) => {
         event.preventDefault();
         zone.classList.add("dragover");

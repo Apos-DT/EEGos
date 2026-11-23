@@ -32,7 +32,7 @@
             <div class="field"><label for="datasetSelect">特征数据集</label><select class="select" id="datasetSelect" required>
               {% for ds in datasets %}<option value="{{ ds.id }}" data-samples="{{ ds.n_samples }}" data-source="{{ ds.source }}" {% if ds.id == selected_dataset %}selected{% endif %}>{{ (ds.record_meta|default({})).title or ds.file }} · {{ ds.n_samples }}×{{ ds.n_channels }}×{{ ds.n_features }}{% if ds.source %} · {{ ds.source }}{% endif %}</option>{% endfor %}
             </select></div>
-            {% if not datasets %}<p class="hint">尚无特征数据集。请先到<a href="/datasets">数据集</a>上传或提取特征。</p>{% endif %}
+            {% if not datasets %}<p class="hint">尚无特征数据集。请先到<a href="/datasets?tab=eeg">EEG 特征制备</a>上传或提取特征。</p>{% endif %}
           </section>
           <section class="training-step">
             <h3>3 · 评估协议 <span class="training-caption">LOSO 被试隔离 · 被试依赖仅作参考</span></h3>

@@ -1,6 +1,10 @@
+from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+import numpy as np
 from fastapi.testclient import TestClient
 
 from webapp.main import app
@@ -15,7 +19,7 @@ class WebTests(unittest.TestCase):
         for path in ["/", "/surveys", "/survey-data", "/surveys/new", "/media", "/eeg", "/audit", "/selection", "/datasets", "/training", "/experiments", "/documents", "/system"]:
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200, path)
-            self.assertIn("EEG-EmoStudio", response.text)
+            self.assertIn("EmoStudio", response.text)
 
     def test_surveys_render_legacy_rows_without_record_metadata(self):
         legacy = {"id":"legacy", "title":"Legacy survey", "status":"open",
@@ -61,6 +65,49 @@ class WebTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_non_eeg_catalog_ids_cannot_start_eeg_jobs(self):
+        sources = self.client.get("/api/datasets/catalog").json()["datasets"]
+        excluded = {row["id"] for row in sources if row["eeg_preparation"] == "no_eeg"}
+        self.assertTrue({"meld", "emorynlp", "noxi", "iemocap"} <= excluded)
+        with patch("webapp.routers.datasets.manager.submit") as submit:
+            for source_id in excluded:
+                with self.subTest(source=source_id):
+                    response = self.client.post("/api/features/run", json={"raw_id": source_id})
+                    self.assertEqual(response.status_code, 404)
+                    response = self.client.post("/api/train/run", json={"dataset_id": source_id})
+                    self.assertEqual(response.status_code, 404)
+        submit.assert_not_called()
+
+    def test_eeg_raw_upload_checks_modality_and_arrays_before_save(self):
+        arrays = {
+            "x": np.ones((2, 3, 200), dtype=np.float32),
+            "y": [0, 1], "subjects": ["S1", "S2"], "fs": 200,
+        }
+
+        def upload(filename="trial.npz", confirmed=True, **overrides):
+            body = BytesIO()
+            np.savez_compressed(body, **{**arrays, **overrides})
+            return self.client.post("/api/raw/upload", content=body.getvalue(), params={
+                "filename": filename, "eeg_confirmed": confirmed,
+            })
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_dir = root / "raw"
+            with patch("webapp.routers.datasets.ROOT", root), patch("webapp.routers.datasets.RAW_DIR", raw_dir):
+                self.assertEqual(upload(filename="annotations.csv").status_code, 400)
+                self.assertEqual(upload(confirmed=False).status_code, 400)
+                self.assertEqual(upload(modality="audio").status_code, 400)
+                self.assertEqual(upload(feature_names=["DE"]).status_code, 400)
+                self.assertEqual(upload(y=[0]).status_code, 400)
+                self.assertFalse(raw_dir.exists())
+
+                response = upload()
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertTrue((raw_dir / "trial.npz").is_file())
+                response = upload(filename="declared.npz", modality="EEG", confirmed=False)
+                self.assertEqual(response.status_code, 200, response.text)
 
 
 if __name__ == "__main__":

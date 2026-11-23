@@ -9,18 +9,23 @@ from __future__ import annotations
 
 import json
 import re
+from io import BytesIO
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
+from zipfile import BadZipFile
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.concurrency import run_in_threadpool
+from eeg_emostudio.data.raw_npz import raw_eeg_arrays
 
 from ..common import job_payload, render
 from ..config import ARTIFACTS, PROCESSED_DIR, RAW_DIR, ROOT
 from ..content import MODELS
+from ..dataset_catalog import list_source_datasets
 from ..eeg import list_uploads, output_for, report_for, resolve_upload, save_upload
 from ..jobs import manager
 from ..schemas import EEGProcessRequest, FeatureRequest, MergeRequest, TrainRequest
@@ -43,11 +48,14 @@ router = APIRouter()
 
 
 @router.get("/datasets", response_class=HTMLResponse)
-async def datasets_page(request: Request) -> HTMLResponse:
+async def datasets_page(request: Request, tab: str = "catalog") -> HTMLResponse:
+    if tab != "eeg":
+        catalog = await run_in_threadpool(list_source_datasets)
+        return render(request, "datasets", "datasets.html", tab="catalog", catalog=catalog)
     datasets = await run_in_threadpool(list_feature_datasets)
     raws = await run_in_threadpool(list_raw_datasets)
     jobs = [job_payload(job) for job in manager.list(6)]
-    return render(request, "datasets", "datasets.html", datasets=datasets, raws=raws, jobs=jobs)
+    return render(request, "datasets", "datasets.html", tab="eeg", datasets=datasets, raws=raws, jobs=jobs)
 
 
 @router.get("/eeg", response_class=HTMLResponse)
@@ -91,6 +99,11 @@ async def training_monitor() -> dict[str, Any]:
 @router.get("/api/datasets")
 async def api_datasets() -> dict[str, Any]:
     return {"datasets": await run_in_threadpool(list_feature_datasets)}
+
+
+@router.get("/api/datasets/catalog")
+async def api_dataset_catalog() -> dict[str, Any]:
+    return {"datasets": await run_in_threadpool(list_source_datasets)}
 
 
 @router.get("/api/raw")
@@ -211,42 +224,48 @@ async def api_eeg_report(upload_id: str) -> dict[str, Any]:
 
 
 @router.post("/api/raw/upload")
-async def api_raw_upload(request: Request, filename: str = Query("upload.npz")) -> dict[str, Any]:
+async def api_raw_upload(
+    request: Request, filename: str = Query("upload.npz"), eeg_confirmed: bool = False,
+) -> dict[str, Any]:
+    original_name = Path(filename).name
+    if Path(original_name).suffix.lower() != ".npz":
+        raise HTTPException(status_code=400, detail="请上传 EEG 时间序列的 .npz 文件")
     body = await request.body()
     if not body:
         raise HTTPException(status_code=400, detail="文件为空")
     if len(body) > 300 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="文件超过 300 MB 限制")
-    safe = re.sub(r"[^A-Za-z0-9_.\-\u4e00-\u9fff]+", "_", Path(filename).name)
-    if not safe.lower().endswith(".npz"):
-        safe += ".npz"
+    try:
+        await run_in_threadpool(_validate_raw_upload, body, eeg_confirmed)
+    except (ValueError, TypeError, OSError, BadZipFile) as exc:
+        raise HTTPException(status_code=400, detail=f"不是合法的 EEG raw.npz：{exc}") from exc
+
+    safe = re.sub(r"[^A-Za-z0-9_.\-\u4e00-\u9fff]+", "_", original_name)
+    safe = f"{Path(safe).stem}.npz"
     target = RAW_DIR / safe
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
-        target = target.with_name(f"{target.stem}_{datetime.now():%Y%m%d%H%M%S}.npz")
+        target = target.with_name(f"{target.stem}_{uuid4().hex[:12]}.npz")
+    # This synchronous write keeps the filename check and save in one request step.
     target.write_bytes(body)
-    try:
-        with np.load(target, allow_pickle=False) as data:
-            missing = {"x", "y", "subjects"} - set(data.files)
-            if missing:
-                raise ValueError(f"缺少字段：{sorted(missing)}")
-            shape = tuple(int(v) for v in np.asarray(data["x"]).shape)
-            if len(shape) != 3:
-                raise ValueError("x 必须为 (trials, channels, samples)")
-    except Exception as exc:
-        target.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"不是合法的 raw.npz：{exc}") from exc
 
     raws = await run_in_threadpool(list_raw_datasets)
     info = next((item for item in raws if item["path"].endswith(target.name)), None)
     return {"uploaded": True, "raw": info, "path": str(target.relative_to(ROOT))}
 
 
+def _validate_raw_upload(body: bytes, eeg_confirmed: bool) -> None:
+    with np.load(BytesIO(body), allow_pickle=False) as data:
+        if "modality" not in data.files and not eeg_confirmed:
+            raise ValueError("文件未标注模态，请确认 x 来自 EEG 导联的时间序列")
+        raw_eeg_arrays(data)
+
+
 @router.post("/api/features/run")
 async def api_features_run(payload: FeatureRequest) -> dict[str, Any]:
-    raw_path = resolve_raw(payload.raw_id)
+    raw_path = await run_in_threadpool(resolve_raw, payload.raw_id)
     if not raw_path:
-        raise HTTPException(status_code=404, detail="原始数据不存在")
+        raise HTTPException(status_code=404, detail="请从 EEG 原始文件列表选择数据")
     stem = raw_path.stem.replace(" ", "_")
     output = PROCESSED_DIR / f"{stem}_features.npz"
     if output.exists():

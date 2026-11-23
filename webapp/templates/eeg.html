@@ -3,7 +3,7 @@
 {% block title %}原始 EEG 处理 · {{ app_name }}{% endblock %}
 
 {% block actions %}
-<a class="btn btn-soft" href="/datasets">{{ icon('database', 15) }} 数据集与特征</a>
+<a class="btn btn-soft" href="/datasets?tab=eeg">{{ icon('database', 15) }} EEG 特征制备</a>
 {% endblock %}
 
 {% block content %}
@@ -170,7 +170,7 @@
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" type="submit" id="eegRun">{{ icon('waves', 16) }} 开始清洗</button>
-      <span class="hint">任务在后台运行；完成后可直接去“数据集与特征”训练。</span>
+      <span class="hint">任务在后台运行，完成后可查看生成的 EEG 特征集。</span>
     </div>
   </form>
 </section>
@@ -222,5 +222,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/eeg.js') }}"></script>
-<script src="{{ url_for('static', path='js/raw_eeg.js') }}"></script>
+<script src="{{ url_for('static', path='js/raw_eeg.js') }}?v=eeg-input-1"></script>
 {% endblock %}

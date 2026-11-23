@@ -74,7 +74,7 @@
     $("rawArtifacts").replaceChildren(...files.filter(([name])=>r.files?.includes(name)||name==="eeg_report.json").map(([name,label])=>{const a=node("a",label,"btn btn-soft btn-sm");a.href=base+name;a.target="_blank";return a;}));
     if(r.status==="success" || r.status==="failed") {const reportLink=node("a","处理报告","btn btn-soft btn-sm");reportLink.href=`/api/eeg/raw/runs/${encodeURIComponent(r.run_id)}/report`;reportLink.target="_blank";$("rawArtifacts").prepend(reportLink);}
     $("rawGoTrain").hidden=!r.dataset_id;
-    $("rawGoTrain").href=r.n_subjects>=2?`/training?dataset=${encodeURIComponent(r.dataset_id)}`:"/datasets";
+    $("rawGoTrain").href=r.n_subjects>=2?`/training?dataset=${encodeURIComponent(r.dataset_id)}`:"/datasets?tab=eeg";
     $("rawGoTrain").textContent=r.n_subjects>=2?"使用特征训练":"查看特征数据集";
     $("rawQualityBody").replaceChildren(...(r.trials||[]).map(t=>{const tr=node("tr");[`${t.session} / S${String(t.subject).padStart(2,"0")}`,t.trial,r.class_names[t.label],t.windows_total,t.windows_kept,t.windows_rejected].forEach(v=>tr.append(node("td",v)));return tr;}));
     const ica=$("rawICAResult");ica.replaceChildren();

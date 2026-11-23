@@ -8,7 +8,7 @@
 
 {% block content %}
 <div class="sys-grid">
-  <div class="sys-card"><div class="k">Application</div><div class="v">{{ info.app_version }}</div><div class="d">EEG-EmoStudio 本地研究控制台</div></div>
+  <div class="sys-card"><div class="k">Application</div><div class="v">{{ info.app_version }}</div><div class="d">{{ app_name }} 本地研究控制台</div></div>
   <div class="sys-card"><div class="k">Python</div><div class="v">{{ info.python }}</div><div class="d">{{ info.platform }}</div></div>
   <div class="sys-card"><div class="k">Data assets</div><div class="v">{{ info.datasets }} / {{ info.raws }}</div><div class="d">特征集 / 原始数据</div></div>
   <div class="sys-card"><div class="k">Experiments</div><div class="v">{{ info.experiments }}</div><div class="d">运行记录与报告</div></div>

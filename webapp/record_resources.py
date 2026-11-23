@@ -13,7 +13,7 @@ RESOURCES = {
     "imports": {"label": "导入批次", "create_url": "/survey-data?tab=import"},
     "media": {"label": "素材", "upload": "/api/records/media/upload", "accept": ".mp4,.mp3"},
     "features": {"label": "特征数据集", "upload": "/api/records/features/upload", "accept": ".npz"},
-    "raw_data": {"label": "原始数据集", "upload": "/api/raw/upload", "accept": ".npz"},
+    "raw_data": {"label": "EEG 原始数据集", "create_url": "/datasets?tab=eeg#uploadCard"},
     "eeg_uploads": {"label": "EEGLAB 上传", "upload": "/api/eeg/upload", "accept": ".set,.zip"},
     "eeg_runs": {"label": "EEG 处理记录", "create_url": "/eeg"},
     "experiments": {"label": "实验记录", "create_url": "/training"},

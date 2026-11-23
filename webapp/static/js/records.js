@@ -92,7 +92,8 @@
     // Expose management controls only when the corresponding API is present.
     try{await ensureDefinitions();}catch(error){return;}
     document.body.dataset.recordsReady="true";
-    const available=pages[document.body.dataset.page] || [];
+    const currentPage=document.body.dataset.page;
+    const available=currentPage==="datasets" && !$("featureForm") ? [] : pages[currentPage] || [];
     if(available.length){const b=button("",()=>open(available[0]));b.append(element("span","记录管理","record-entry-full"),element("span","管理","record-entry-short"));b.setAttribute("aria-label","记录管理");b.classList.add("record-manager-entry");document.querySelector(".page-actions")?.prepend(b);}
     document.querySelectorAll("[data-close-record]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.closeRecord).close()));
     ["recordLibrary","recordEditor","recordDelete"].forEach(id=>{

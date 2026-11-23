@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import DDA_PYTHON, DDA_REPO_DIR, EXPERIMENTS_DIR, SEED_IV_DIR
+from ..content import APP_NAME
 from ..jobs import Job, manager
 
 
@@ -109,7 +110,7 @@ def run_dda(
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     manager.log(job, f"$ {' '.join(command)}")
-    manager.log(job, "外部 DDA sidecar 独立运行；训练实现未导入 EEG-EmoStudio 核心算法包。")
+    manager.log(job, f"外部 DDA sidecar 独立运行；训练实现未导入 {APP_NAME} 核心算法包。")
     process = subprocess.Popen(
         command,
         cwd=str(DDA_REPO_DIR),

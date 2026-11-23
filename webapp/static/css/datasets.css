@@ -1,0 +1,24 @@
+.dataset-workspace-tabs {
+  overflow: visible;
+  margin-bottom: 12px;
+  padding-inline: 12px;
+}
+
+.catalog-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9rem;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 29rem);
+  margin-bottom: 14px;
+}
+.catalog-toolbar .search-box input {
+  width: 100%;
+  min-width: 0;
+  height: 39px;
+}
+.catalog-table { padding: 0; }
+
+@media (max-width: 560px) {
+  .catalog-toolbar { grid-template-columns: minmax(0, 1fr) 6.75rem; }
+}

@@ -18,11 +18,14 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 from typing import Any, Iterable
+from zipfile import BadZipFile
 
 import numpy as np
 
 from eeg_emostudio.data.manifest import load_features, write_feature_dataset
+from eeg_emostudio.data.raw_npz import declared_eeg, raw_eeg_arrays
 
+from .artifact_index import index_records
 from .config import (
     ARTIFACTS,
     AUDIT_DIR,
@@ -43,7 +46,7 @@ from .config import (
     cache_by,
     cache_stats,
 )
-from .content import APP_VERSION, DOCS, MODELS
+from .content import APP_NAME, APP_VERSION, DOCS, MODELS
 from .record_store import managed
 from . import record_store
 
@@ -364,13 +367,14 @@ def _manifest_for(npz_path: Path) -> dict[str, Any]:
 def _inspect_feature_npz(path: Path) -> dict[str, Any] | None:
     try:
         with np.load(path, allow_pickle=False) as data:
+            declared_eeg(data)
             if not {"x", "y", "subjects"}.issubset(data.files):
                 return None
             x = np.asarray(data["x"])
             y = np.asarray(data["y"]).astype(int)
             subjects = [str(item) for item in np.asarray(data["subjects"]).tolist()]
             classes = _decode_names(data["class_names"]) if "class_names" in data.files else [str(i) for i in sorted(set(y.tolist()))]
-    except (OSError, ValueError):
+    except (OSError, ValueError, TypeError, BadZipFile):
         return None
     manifest = _manifest_for(path)
     extra = manifest.get("extra", {}) if isinstance(manifest, dict) else {}
@@ -401,13 +405,6 @@ def _inspect_feature_npz(path: Path) -> dict[str, Any] | None:
 
 
 @managed("features")
-@cache_by(
-    "feature_datasets",
-    lambda: PROCESSED_DIR,
-    lambda: ARTIFACTS / "demo",
-    lambda: EXPERIMENTS_DIR,
-    lambda: OUTPUT_DIR,
-)
 def list_feature_datasets() -> list[dict[str, Any]]:
     candidates: list[Path] = []
     for directory in (PROCESSED_DIR, ARTIFACTS / "demo"):
@@ -416,15 +413,18 @@ def list_feature_datasets() -> list[dict[str, Any]]:
     candidates.extend((ARTIFACTS / "experiments").glob("*/features.npz"))
     candidates.extend(OUTPUT_DIR.glob("*/features.npz"))
     seen: set[Path] = set()
-    result: list[dict[str, Any]] = []
+    files: list[Path] = []
+    external = (DATA_DIR / "external").resolve()
     for path in candidates:
         resolved = path.resolve()
-        if resolved in seen or path.name == "raw.npz":
+        if resolved in seen or resolved.is_relative_to(external) or path.name == "raw.npz":
             continue
         seen.add(resolved)
-        info = _inspect_feature_npz(path)
-        if info:
-            result.append(info)
+        files.append(path)
+    result = index_records(
+        "eeg_features", files, _inspect_feature_npz,
+        sidecars=lambda path: [path.with_suffix(".manifest.json")],
+    )
     result.sort(key=lambda item: (item["kind"] != "demo", item["created_at"]), reverse=True)
     return result
 
@@ -432,13 +432,8 @@ def list_feature_datasets() -> list[dict[str, Any]]:
 def _inspect_raw_npz(path: Path) -> dict[str, Any] | None:
     try:
         with np.load(path, allow_pickle=False) as data:
-            if not {"x", "y", "subjects"}.issubset(data.files):
-                return None
-            shape = tuple(int(value) for value in np.asarray(data["x"]).shape)
-            fs = float(np.asarray(data["fs"]).reshape(-1)[0]) if "fs" in data.files else None
-            y = np.asarray(data["y"]).astype(int)
-            subjects = [str(item) for item in np.asarray(data["subjects"]).tolist()]
-    except (OSError, ValueError, TypeError):
+            x, y, subjects, fs = raw_eeg_arrays(data)
+    except (OSError, ValueError, TypeError, BadZipFile):
         return None
     kind = "demo" if ("demo" in path.parts or "raw_demo" in path.parts) else "upload"
     return {
@@ -447,9 +442,9 @@ def _inspect_raw_npz(path: Path) -> dict[str, Any] | None:
         "file": path.name,
         "path": _rel(path),
         "kind": kind,
-        "n_trials": shape[0] if len(shape) > 0 else 0,
-        "n_channels": shape[1] if len(shape) > 1 else 0,
-        "n_samples": shape[2] if len(shape) > 2 else 0,
+        "n_trials": x.shape[0],
+        "n_channels": x.shape[1],
+        "n_samples": x.shape[2],
         "fs": fs,
         "n_subjects": len(set(subjects)),
         "n_classes": len(set(y.tolist())),
@@ -459,29 +454,22 @@ def _inspect_raw_npz(path: Path) -> dict[str, Any] | None:
 
 
 @managed("raw_data")
-@cache_by(
-    "raw_datasets",
-    lambda: RAW_DIR,
-    lambda: UPLOAD_DIR,
-    lambda: ARTIFACTS / "raw_demo",
-    lambda: OUTPUT_DIR,
-)
 def list_raw_datasets() -> list[dict[str, Any]]:
     candidates: list[Path] = []
     for directory in (RAW_DIR, UPLOAD_DIR, ARTIFACTS / "raw_demo"):
         if directory.exists():
             candidates.extend(directory.glob("*.npz"))
     candidates.extend(OUTPUT_DIR.glob("*/raw.npz"))
-    result = []
+    files: list[Path] = []
     seen: set[Path] = set()
+    external = (DATA_DIR / "external").resolve()
     for path in candidates:
         resolved = path.resolve()
-        if resolved in seen or path.name.startswith("features"):
+        if resolved in seen or resolved.is_relative_to(external) or path.name.startswith("features"):
             continue
         seen.add(resolved)
-        info = _inspect_raw_npz(path)
-        if info:
-            result.append(info)
+        files.append(path)
+    result = index_records("raw_eeg", files, _inspect_raw_npz)
     result.sort(key=lambda item: item["created_at"], reverse=True)
     return result
 
@@ -713,7 +701,7 @@ def overview() -> dict[str, Any]:
         {"key": "training", "label": "模型训练", "status": "done" if experiments else "idle", "detail": f"{len(experiments)} 次实验" if experiments else "待运行"},
     ]
     return {
-        "app": {"name": "EEG-EmoStudio", "version": APP_VERSION},
+        "app": {"name": APP_NAME, "version": APP_VERSION},
         "stats": {
             "stimuli": len(quality) or 240,
             "video": video_count or 120,
