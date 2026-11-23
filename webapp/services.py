@@ -16,6 +16,7 @@ import platform
 import sys
 from datetime import datetime
 from pathlib import Path
+from threading import RLock
 from urllib.parse import quote
 from typing import Any, Iterable
 from zipfile import BadZipFile
@@ -42,13 +43,13 @@ from .config import (
     SELECTION_DIR,
     UPLOAD_DIR,
     VIDEO_DIR,
-    WEB_JOBS_DIR,
     cache_by,
     cache_stats,
+    fingerprint,
 )
 from .content import APP_NAME, APP_VERSION, DOCS, MODELS
+from .db import transaction
 from .record_store import managed
-from . import record_store
 
 
 # ---------------------------------------------------------------------------
@@ -493,6 +494,13 @@ def resolve_raw(raw_id: str) -> Path | None:
 # ---------------------------------------------------------------------------
 
 
+_EXPERIMENT_ARTIFACTS = (
+    "metrics.json", "run_meta.json", "report.html",
+    "figures/confusion_matrix.png", "figures/per_subject_accuracy.png",
+)
+_experiment_index_lock = RLock()
+
+
 def _experiment_dirs() -> list[Path]:
     dirs = []
     if (ARTIFACTS / "demo").exists():
@@ -502,15 +510,13 @@ def _experiment_dirs() -> list[Path]:
     return dirs
 
 
-def _experiment_info(path: Path) -> dict[str, Any] | None:
-    metrics = _read_json(path / "metrics.json", {})
-    if not metrics:
+def _experiment_info(path: Path, metrics: Any, run_meta: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(metrics, dict):
         return None
     overall = metrics.get("overall", {}) or {}
-    if "accuracy" not in overall:
+    if not isinstance(overall, dict) or "accuracy" not in overall:
         return None
     run_id = "demo" if path.name == "demo" else path.name
-    run_meta = _read_json(path / "run_meta.json", {})
     is_demo = run_id == "demo" or bool(run_meta.get("is_demo"))
     report = path / "report.html"
     confusion = path / "figures" / "confusion_matrix.png"
@@ -548,36 +554,101 @@ def _experiment_info(path: Path) -> dict[str, Any] | None:
     }
 
 
-def _experiment_cache_targets() -> list[Path]:
-    # Runs are created before training finishes. Watching only the parent
-    # directory misses metrics/report writes inside an existing run directory.
-    files = ("metrics.json", "run_meta.json", "report.html",
-             "figures/confusion_matrix.png", "figures/per_subject_accuracy.png")
-    return [EXPERIMENTS_DIR, *(
-        directory / name for directory in _experiment_dirs() for name in files
-    )]
+def sync_experiments() -> str:
+    """Index CLI and sidecar results as they finish, including runs external to the web app."""
+    scope = str(EXPERIMENTS_DIR.resolve())
+    with _experiment_index_lock:
+        with transaction() as conn:
+            stored = {
+                row["run_id"]: row["artifact_signature"]
+                for row in conn.execute(
+                    "SELECT run_id, artifact_signature FROM experiment_runs WHERE scope = ?", (scope,),
+                )
+            }
+        visible = set()
+        updates = []
+        for path in _experiment_dirs():
+            if path.name in visible or not (path / "metrics.json").is_file():
+                continue
+            visible.add(path.name)
+            signature = json.dumps(fingerprint(path / name for name in _EXPERIMENT_ARTIFACTS))
+            if stored.get(path.name) == signature:
+                continue
+            metrics = _read_json(path / "metrics.json", {})
+            meta = _read_json(path / "run_meta.json", {})
+            meta = meta if isinstance(meta, dict) else {}
+            info = _experiment_info(path, metrics, meta)
+            unchanged = signature == json.dumps(fingerprint(path / name for name in _EXPERIMENT_ARTIFACTS))
+            if info and unchanged:
+                dataset = meta.get("dataset")
+                updates.append((
+                    scope, info["id"], info["path"], signature, info["model"], info["setting"],
+                    str(dataset) if dataset else None, info["created_at"], info["accuracy"],
+                    info["macro_f1"], info["is_demo"],
+                    json.dumps(_clean(info), ensure_ascii=False),
+                    json.dumps(_clean(metrics), ensure_ascii=False),
+                    json.dumps(_clean(meta), ensure_ascii=False),
+                ))
+        removed = stored.keys() - visible
+        if updates or removed:
+            with transaction(write=True) as conn:
+                conn.executemany("""
+                    INSERT INTO experiment_runs (
+                        scope, run_id, output_path, artifact_signature, model, setting,
+                        dataset, created_at, accuracy, macro_f1, is_demo, summary_json,
+                        metrics_json, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(scope, run_id) DO UPDATE SET
+                        output_path = excluded.output_path,
+                        artifact_signature = excluded.artifact_signature,
+                        model = excluded.model,
+                        setting = excluded.setting,
+                        dataset = excluded.dataset,
+                        created_at = excluded.created_at,
+                        accuracy = excluded.accuracy,
+                        macro_f1 = excluded.macro_f1,
+                        is_demo = excluded.is_demo,
+                        summary_json = excluded.summary_json,
+                        metrics_json = excluded.metrics_json,
+                        metadata_json = excluded.metadata_json
+                """, updates)
+                conn.executemany(
+                    "DELETE FROM experiment_runs WHERE scope = ? AND run_id = ? AND artifact_signature = ?",
+                    ((scope, run_id, stored[run_id]) for run_id in removed),
+                )
+    return scope
 
 
 @managed("experiments", title_key="label")
-@cache_by("experiments", _experiment_cache_targets)
 def list_experiments() -> list[dict[str, Any]]:
-    experiments = []
-    for path in _experiment_dirs():
-        info = _experiment_info(path)
-        if info:
-            experiments.append(info)
-    experiments.sort(key=lambda item: item["created_at"], reverse=True)
-    return experiments
+    scope = sync_experiments()
+    with transaction() as conn:
+        rows = conn.execute("""
+            SELECT summary_json FROM experiment_runs
+            WHERE scope = ? ORDER BY created_at DESC, run_id DESC
+        """, (scope,))
+        return [json.loads(row["summary_json"]) for row in rows]
+
+
+def experiment_metrics(run_id: str) -> dict[str, Any] | None:
+    scope = sync_experiments()
+    with transaction() as conn:
+        row = conn.execute("""
+            SELECT metrics_json FROM experiment_runs WHERE scope = ? AND run_id = ?
+        """, (scope, run_id)).fetchone()
+        return json.loads(row["metrics_json"]) if row else None
 
 
 def resolve_experiment(run_id: str) -> Path | None:
     if run_id == "demo":
         path = ARTIFACTS / "demo"
         return path if path.exists() else None
-    if EXPERIMENTS_DIR.exists():
-        candidate = EXPERIMENTS_DIR / run_id
-        if candidate.exists() and candidate.is_dir():
-            return candidate
+    if Path(run_id).name != run_id:
+        return None
+    root = EXPERIMENTS_DIR.resolve()
+    candidate = (root / run_id).resolve()
+    if candidate.parent == root and candidate.is_dir():
+        return candidate
     return None
 
 
@@ -587,7 +658,6 @@ def resolve_experiment(run_id: str) -> Path | None:
 
 
 @managed("documents", id_key="no", title_key="title")
-@cache_by("docs", lambda: DELIVERABLES_DIR, lambda: record_store.STORE_DIR / "state.json")
 def list_docs() -> list[dict[str, Any]]:
     result = []
     for doc in DOCS:
@@ -606,8 +676,8 @@ def list_docs() -> list[dict[str, Any]]:
                 "pdf_url": f"/files/pdf/{doc['no']}" if pdf.exists() else "",
             }
         )
-    from .record_store import snapshot
-    result.extend(snapshot().get("uploads", {}).get("documents", {}).values())
+    from .record_store import uploads
+    result.extend(uploads("documents").values())
     return result
 
 
@@ -635,7 +705,7 @@ def overview() -> dict[str, Any]:
     from .experiment import summary as experiment_summary
 
     experiment = experiment_summary()
-    # 新版自定义量表答卷落在统一 JSONL 仓库，不写入 session.responses；
+    # 新版自定义量表答卷存入 SQLite 独立答卷表，不写入 session.responses；
     # 工作台统计需把两个口径相加，否则新问卷提交后计数仍为 0。
     try:
         from . import survey_meta  # 延迟导入，避免 survey_meta -> services 循环

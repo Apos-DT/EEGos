@@ -1,42 +1,30 @@
-"""实验会话存储与旧版固定量表数据兼容层。
+"""Questionnaire sessions and the historical fixed-scale experiment API.
 
-旧版「现场实验」前端（experiment.html / responses.html）已下线，公开问卷统一
-从 ``/q/{token}`` 进入，逐题答卷在 ``webapp/survey_meta.py`` 的 JSONL 仓库中。
-本模块仍承担两件事：
-
-* 会话 JSON 的读写与播放游标（新版问卷会话同样落在
-  ``data/experiment/sessions``，因此两个通道共用 SESSIONS_DIR）；
-* 旧版固定量表答卷的读取、统计与 CSV 导出，保证历史会话可回溯。
-
-会话以纯 JSON 保存，便于检查、备份与归档；素材不复制、不上传。
+Current sessions and their playback cursor share the database with survey
+responses. Fixed-scale answers remain available through their legacy routes.
 """
 
 from __future__ import annotations
 
 import csv
 import io
-import json
 import re
 import uuid
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
 from typing import Any
 
 import pandas as pd
 
 from .config import (
     AUDIO_DIR,
-    EXPERIMENT_DIR,
     ROOT,
     SELECTION_CSV,
-    SESSIONS_DIR,
     VIDEO_DIR,
-    cache_by,
 )
 from .media import media_path
-
-_LOCK = Lock()
+from .db import transaction
+from . import survey_db
 
 LIKERT_LABELS = {
     1: "非常低",
@@ -64,13 +52,6 @@ def _now() -> str:
 
 def _safe_id(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "", value)[:64]
-
-
-def _session_path(session_id: str) -> Path:
-    safe = _safe_id(session_id)
-    if not safe or safe != session_id:
-        raise ValueError("非法 session id")
-    return SESSIONS_DIR / f"{safe}.json"
 
 
 def _load_materials() -> list[dict[str, Any]]:
@@ -182,33 +163,29 @@ def create_session(
             "video_dir": str(VIDEO_DIR.relative_to(ROOT)),
         },
     }
-    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-    with _LOCK:
-        _session_path(session_id).write_text(
-            json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+    with transaction(write=True) as conn:
+        survey_db.save_session(conn, session)
     return public_session(session)
 
 
-def load_session(session_id: str) -> dict[str, Any]:
-    path = _session_path(session_id)
-    if not path.exists():
+def load_session(session_id: str, *, conn=None) -> dict[str, Any]:
+    if not session_id or _safe_id(session_id) != session_id:
+        raise ValueError("非法 session id")
+    if conn is not None:
+        session = survey_db.get_session(conn, session_id)
+    else:
+        with transaction() as db:
+            session = survey_db.get_session(db, session_id)
+    if session is None:
         raise FileNotFoundError("实验会话不存在")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _save(session: dict[str, Any]) -> None:
-    session["updated_at"] = _now()
-    _session_path(session["id"]).write_text(
-        json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    return session
 
 
 def public_session(session: dict[str, Any]) -> dict[str, Any]:
     sequence = session.get("sequence", [])
     index = int(session.get("current_index", 0))
     current = sequence[index] if index < len(sequence) and session.get("status") == "running" else None
-    # 新版自定义量表答卷落在统一 JSONL 仓库，不写进 session.responses；
+    # 新版自定义量表答卷单独存储，不写进 session.responses；
     # 进度必须按 session_id 回查，否则提交后进度条一直停在 0/N。
     answered = len(session.get("responses", []))
     if session.get("survey_id"):
@@ -275,8 +252,8 @@ def video_for_session(session_id: str) -> Path:
 
 
 def submit_response(session_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    with _LOCK:
-        session = load_session(session_id)
+    with transaction(write=True) as conn:
+        session = load_session(session_id, conn=conn)
         if session.get("status") != "running":
             raise ValueError("实验已结束")
         index = int(session["current_index"])
@@ -311,69 +288,43 @@ def submit_response(session_id: str, data: dict[str, Any]) -> dict[str, Any]:
             "answered_at": _now(),
         }
         session["responses"].append(response)
-        session["current_index"] = index + 1
-        if session["current_index"] >= len(session["sequence"]):
-            session["status"] = "completed"
-            session["completed_at"] = _now()
-        _save(session)
-        return public_session(session)
+        advance_session_record(session)
+        survey_db.save_session(conn, session)
+    return public_session(session)
 
 
-def advance_session(session_id: str) -> dict[str, Any]:
-    """只推进播放进度，不写旧格式 response。
-
-    自定义 schema 问卷用 :func:`webapp.surveys.submit_schema_answers` 写
-    统一答卷，这里单独负责 session 的游标与完成状态，两个通道互不干扰。
-    """
-
-    with _LOCK:
-        session = load_session(session_id)
-        if session.get("status") != "running":
-            raise ValueError("实验已结束")
-        index = int(session["current_index"])
-        if index >= len(session["sequence"]):
-            raise ValueError("没有待回答的刺激")
-        session["current_index"] = index + 1
-        if session["current_index"] >= len(session["sequence"]):
-            session["status"] = "completed"
-            session["completed_at"] = _now()
-        _save(session)
-        return public_session(session)
+def advance_session_record(session: dict[str, Any]) -> None:
+    """Advance an in-memory session loaded in the caller's write transaction."""
+    if session.get("status") != "running":
+        raise ValueError("实验已结束")
+    index = int(session["current_index"])
+    if index >= len(session["sequence"]):
+        raise ValueError("没有待回答的刺激")
+    session["current_index"] = index + 1
+    session["updated_at"] = _now()
+    if session["current_index"] >= len(session["sequence"]):
+        session["status"] = "completed"
+        session["completed_at"] = session["updated_at"]
 
 
 def abort_session(session_id: str) -> dict[str, Any]:
-    with _LOCK:
-        session = load_session(session_id)
+    with transaction(write=True) as conn:
+        session = load_session(session_id, conn=conn)
         if session.get("status") == "running":
             session["status"] = "aborted"
-            session["aborted_at"] = _now()
-            _save(session)
-        return public_session(session)
+            session["aborted_at"] = session["updated_at"] = _now()
+            survey_db.save_session(conn, session)
+    return public_session(session)
 
 
-@cache_by("sessions", lambda: SESSIONS_DIR)
 def list_sessions() -> list[dict[str, Any]]:
-    if not SESSIONS_DIR.exists():
-        return []
-    sessions = []
-    for path in sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-        try:
-            session = json.loads(path.read_text(encoding="utf-8"))
-            sessions.append(public_session(session))
-        except Exception:
-            continue
-    return sessions
+    return [public_session(session) for session in survey_db.list_sessions()]
 
 
-@cache_by("experiment_summary", lambda: SESSIONS_DIR)
 def summary() -> dict[str, Any]:
-    sessions = list_sessions()
-    all_responses: list[dict[str, Any]] = []
-    for session in sessions:
-        try:
-            all_responses.extend(load_session(session["id"]).get("responses", []))
-        except Exception:
-            continue
+    raw_sessions = survey_db.list_sessions()
+    sessions = [public_session(session) for session in raw_sessions]
+    all_responses = [response for session in raw_sessions for response in session["responses"]]
     completed = [item for item in sessions if item["status"] == "completed"]
     valence = [float(item["valence"]) for item in all_responses if item.get("valence")]
     arousal = [float(item["arousal"]) for item in all_responses if item.get("arousal")]
@@ -403,12 +354,8 @@ def summary() -> dict[str, Any]:
 
 def responses_payload(limit: int = 200) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
-    for session in list_sessions():
-        try:
-            raw = load_session(session["id"])
-        except Exception:
-            continue
-        for response in raw.get("responses", []):
+    for session in survey_db.list_sessions():
+        for response in session["responses"]:
             rows.append(
                 {
                     "session_id": session["id"],

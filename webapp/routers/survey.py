@@ -254,8 +254,10 @@ async def api_survey_import_commit(payload: ImportCommitRequest) -> dict[str, An
 
 @router.get("/api/surveys/imports/{batch_id}/source.csv")
 async def api_survey_import_source(batch_id: str) -> Response:
-    # 走 survey_meta.IMPORTS_DIR 而不是本地常量：测试会把仓库目录指到临时目录
-    path = survey_meta.IMPORTS_DIR / f"{safe_name(batch_id)}.source.csv"
-    if not path.exists():
+    batch = await run_in_threadpool(survey_meta.import_detail, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="导入批次不存在")
+    path = survey_meta.IMPORTS_DIR / f"{batch['batch_id']}.source.csv"
+    if not path.is_file():
         raise HTTPException(status_code=404, detail="导入批次原始文件不存在")
     return FileResponse(path, media_type="text/csv; charset=utf-8", filename=path.name)

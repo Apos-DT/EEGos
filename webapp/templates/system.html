@@ -18,7 +18,7 @@
 
 <div class="layout-2">
   <section class="panel">
-    <div class="panel-head"><div><h2 class="panel-title">运行环境</h2><p class="panel-sub">本机/局域网；无云依赖、无外部数据库</p></div><span class="badge badge-green" id="healthBadge">API OK</span></div>
+    <div class="panel-head"><div><h2 class="panel-title">运行环境</h2><p class="panel-sub">本机/局域网 · SQLite</p></div><span class="badge badge-green" id="healthBadge">API OK</span></div>
     <div class="panel-body">
       <dl class="kv">
         <dt>研究者</dt><dd>赵祥生 · 软件工程</dd>
@@ -27,7 +27,7 @@
         <dt>选材状态</dt><dd>{% if info.selection_available %}<span class="badge badge-green">已生成</span>{% else %}<span class="badge badge-neutral">未生成</span>{% endif %}</dd>
         <dt>数据目录</dt><dd class="mono">data/raw → data/processed</dd>
         <dt>实验目录</dt><dd class="mono">artifacts/experiments</dd>
-        <dt>任务目录</dt><dd class="mono">artifacts/web_jobs</dd>
+        <dt>业务存储</dt><dd>SQLite · 问卷、数据目录、任务及实验记录</dd>
         <dt>健康接口</dt><dd class="mono">GET /api/health</dd>
       </dl>
       <div class="form-note mt-4">{{ icon('lock', 14) }} <span>服务默认仅监听 127.0.0.1；如需局域网访问，请先确认数据授权与访问控制，不要直接暴露到公网。</span></div>
@@ -76,7 +76,7 @@
   </section>
 
   <section class="panel">
-    <div class="panel-head"><div><h2 class="panel-title">最近任务</h2><p class="panel-sub">当前服务进程内的任务；已写入 artifacts/web_jobs</p></div></div>
+    <div class="panel-head"><div><h2 class="panel-title">最近任务</h2><p class="panel-sub">任务状态和日志保存在 SQLite</p></div></div>
     {% if jobs %}
     <div class="table-wrap">
       <table class="data">

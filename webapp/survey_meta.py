@@ -1,12 +1,7 @@
 """统一答卷仓库、元数据统计、质量诊断与问卷星 CSV 导入导出。
 
-存储布局（沿用项目既有的纯 JSON 文件方案，不引入数据库）::
-
-    data/surveys/{survey_id}.json              问卷定义（含版本化 schema）
-    data/survey_responses/{survey_id}.jsonl    答卷，每行一条完整记录（追加写）
-    data/survey_imports/{batch_id}.json        导入批次登记
-    data/survey_imports/{batch_id}.source.csv  原始导出副本（原始行号可回查）
-    data/survey_imports/_staging/{token}.*     两步导入的暂存区
+SQLite 保存问卷、答卷、会话、导入批次与暂存元数据。原始 CSV 副本仍留在
+``data/survey_imports``，以便按批次和原始行号回查。
 
 答卷记录同时保存「原始答案」与「按 role 归一化后的值」以及
 ``schema_version`` / ``schema_hash``，因此修改量表后旧答卷仍可追溯。
@@ -24,8 +19,6 @@ import statistics
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime
-from pathlib import Path
-from threading import Lock
 from typing import Any, Iterable
 
 from .questionnaire import (
@@ -41,12 +34,11 @@ from .questionnaire import (
     validate_answers,
     wjx_header,
 )
-from .config import IMPORTS_DIR, RESPONSES_DIR, STAGING_DIR, cache_by
-from .surveys import SURVEYS_DIR, _public, _save, load_survey
+from .config import IMPORTS_DIR, STAGING_DIR
+from .surveys import _public, load_survey
 from .record_store import managed
-from . import record_store
-
-_LOCK = Lock()
+from . import record_store, survey_db
+from .db import transaction
 
 
 def _now() -> str:
@@ -58,10 +50,6 @@ def _safe(value: str) -> str:
     if not cleaned:
         raise ValueError("非法标识")
     return cleaned
-
-
-def _responses_path(survey_id: str) -> Path:
-    return RESPONSES_DIR / f"{_safe(survey_id)}.jsonl"
 
 
 def _decode(data: bytes) -> tuple[str, str]:
@@ -140,17 +128,8 @@ def build_response_record(
 
 
 def append_responses(survey_id: str, records: Iterable[dict[str, Any]]) -> int:
-    """批量追加答卷到 JSONL；一次加锁，避免逐行写带来的并发问题。"""
-
-    lines = [json.dumps(record, ensure_ascii=False) for record in records]
-    if not lines:
-        return 0
-    path = _responses_path(survey_id)
-    with _LOCK:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write("\n".join(lines) + "\n")
-    return len(lines)
+    with transaction(write=True) as conn:
+        return survey_db.save_responses(conn, survey_id, records)
 
 
 def append_response(record: dict[str, Any]) -> dict[str, Any]:
@@ -160,61 +139,34 @@ def append_response(record: dict[str, Any]) -> dict[str, Any]:
 
 @managed("responses", id_key="response_id", title_key="display_name")
 def iter_responses(survey_id: str) -> list[dict[str, Any]]:
-    path = _responses_path(survey_id)
-    if not path.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return records
+    return survey_db.list_responses(survey_id)
 
 
-@cache_by("response_table", lambda: RESPONSES_DIR, lambda: record_store.STORE_DIR / "state.json")
 def response_table(survey_id: str, limit: int = 200) -> dict[str, Any]:
-    rows = sorted(iter_responses(survey_id), key=lambda item: item.get("submitted_at", ""), reverse=True)
-    return {"total": len(rows), "responses": rows[: max(1, min(limit, 5000))]}
+    total, rows = survey_db.recent_responses(survey_id, max(1, min(limit, 5000)))
+    return {
+        "total": total,
+        "responses": record_store.decorate_rows("responses", rows, "response_id", "display_name"),
+    }
 
 
-@cache_by("total_responses", lambda: RESPONSES_DIR, lambda: record_store.STORE_DIR / "state.json")
 def total_responses() -> int:
-    """统一答卷仓库里的答卷总数，供工作台统计使用。"""
-
-    if not RESPONSES_DIR.exists():
-        return 0
-    total = 0
-    for path in RESPONSES_DIR.glob("*.jsonl"):
-        try:
-            with path.open("r", encoding="utf-8") as handle:
-                total += sum(1 for line in handle if line.strip())
-        except OSError:
-            continue
-    return total
+    """Count all responses for the dashboard."""
+    return survey_db.count_responses()
 
 
 def get_response(survey_id: str, response_id: str) -> dict[str, Any] | None:
-    """按 response_id 定位单份答卷，供详情页深链使用。"""
+    record = survey_db.get_response(survey_id, response_id)
+    if record is None:
+        return None
+    rows = record_store.decorate_rows("responses", [record], "response_id", "display_name")
+    return rows[0] if rows else None
 
-    for record in iter_responses(survey_id):
-        if record.get("response_id") == response_id:
-            return record
-    return None
 
-
-@cache_by("responses_for_session", lambda: RESPONSES_DIR, lambda: record_store.STORE_DIR / "state.json")
+@managed("responses", id_key="response_id", title_key="display_name")
 def responses_for_session(survey_id: str, session_id: str) -> list[dict[str, Any]]:
-    """某轮公开问卷会话提交的全部答卷，按提交时间排序。"""
-
-    return sorted(
-        (record for record in iter_responses(survey_id) if record.get("session_id") == session_id),
-        key=lambda item: item.get("submitted_at", ""),
-    )
+    """Read responses via the session index and preserve submission order."""
+    return survey_db.list_responses(survey_id, session_id)
 
 
 def response_detail(survey_id: str, response_id: str) -> dict[str, Any]:
@@ -522,18 +474,23 @@ def preview_import(data: bytes, filename: str, kind: str = "") -> dict[str, Any]
     schema, platform_map = infer_schema(columns, rows, resolved_kind)
 
     token = secrets.token_urlsafe(12)
+    stage = {
+        "token": token, "filename": filename, "encoding": encoding,
+        "kind": resolved_kind, "schema": schema, "platform_map": platform_map,
+        "columns": columns, "n_rows": len(rows),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "created_at": _now(),
+    }
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
-    (STAGING_DIR / f"{token}.csv").write_bytes(data)
-    (STAGING_DIR / f"{token}.json").write_text(
-        json.dumps({
-            "token": token, "filename": filename, "encoding": encoding,
-            "kind": resolved_kind, "schema": schema, "platform_map": platform_map,
-            "columns": columns, "n_rows": len(rows),
-            "sha256": hashlib.sha256(data).hexdigest(),
-            "created_at": _now(),
-        }, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    source = STAGING_DIR / f"{token}.csv"
+    with source.open("xb") as handle:
+        handle.write(data)
+    try:
+        with transaction(write=True) as conn:
+            survey_db.save_staging(conn, stage)
+    except Exception:
+        source.unlink(missing_ok=True)
+        raise
     preview_questions = []
     for index, question in enumerate(schema, start=1):
         column = question.get("source_column", "")
@@ -558,15 +515,19 @@ def preview_import(data: bytes, filename: str, kind: str = "") -> dict[str, Any]
     }
 
 
-def _load_staging(staging_id: str) -> tuple[dict[str, Any], str]:
+def _load_staging(staging_id: str, conn) -> tuple[dict[str, Any], bytes, str]:
     token = _safe(staging_id)
-    meta_path = STAGING_DIR / f"{token}.json"
+    if token != staging_id:
+        raise SchemaError("非法导入暂存标识")
+    meta = survey_db.get_staging(conn, token)
     source_path = STAGING_DIR / f"{token}.csv"
-    if not meta_path.exists() or not source_path.exists():
+    if meta is None or not source_path.is_file():
         raise SchemaError("导入暂存已过期，请重新上传")
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    text, _ = _decode(source_path.read_bytes())
-    return meta, text
+    source = source_path.read_bytes()
+    if hashlib.sha256(source).hexdigest() != meta["sha256"]:
+        raise SchemaError("暂存 CSV 校验失败，请重新上传")
+    text, _ = _decode(source)
+    return meta, source, text
 
 
 def commit_import(
@@ -578,104 +539,102 @@ def commit_import(
 ) -> dict[str, Any]:
     """把暂存的问卷星 CSV 落成统一答卷，并登记导入批次。"""
 
-    meta, text = _load_staging(staging_id)
-    reader = csv.DictReader(io.StringIO(text))
-    rows = list(reader)
-    schema = normalize_schema(meta["schema"])
-    platform_map = meta["platform_map"]
-    kind = meta["kind"]
+    created_source = None
+    try:
+        with transaction(write=True) as conn:
+            meta, source, text = _load_staging(staging_id, conn)
+            reader = csv.DictReader(io.StringIO(text))
+            rows = list(reader)
+            schema = normalize_schema(meta["schema"])
+            platform_map = meta["platform_map"]
+            kind = meta["kind"]
 
-    from .surveys import create_survey_from_import  # local import: 避免模块装配期循环
+            from .surveys import create_survey_from_import  # local import: 避免模块装配期循环
 
-    if survey_id:
-        survey = load_survey(survey_id)
-        if survey.get("origin", {}).get("type") == "wjx_import":
-            # 导入到已有归档问卷时沿用其 schema；字段不一致则显式报错
-            if schema_fingerprint(schema) != survey.get("schema_hash"):
-                raise SchemaError("该问卷的题目结构与上传 CSV 不一致，请新建归档问卷")
-    else:
-        survey = create_survey_from_import(
-            title=title or f"历史问卷导入 · {meta['filename']}",
-            description=description,
-            kind=kind,
-            schema=schema,
-            source_filename=meta["filename"],
-        )
-
-    records: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    duplicate_count = 0
-    for index, row in enumerate(rows, start=2):
-        answers = {question["id"]: row.get(question.get("source_column", ""), "") for question in schema}
-        platform = parse_platform_meta(row, platform_map)
-        record = build_response_record(
-            survey, answers, origin="import", platform=platform,
-            batch_id="", raw_row=index, strict=False,
-        )
-        key = (record.get("rater", ""), record.get("stimulus_id", ""))
-        if mark_duplicates and all(key):
-            if key in seen:
-                record["flags"].append("duplicate")
-                record["valid"] = False
-                duplicate_count += 1
+            if survey_id:
+                survey = load_survey(survey_id, conn=conn)
+                if survey.get("origin", {}).get("type") == "wjx_import":
+                    # 导入到已有归档问卷时沿用其 schema；字段不一致则显式报错
+                    if schema_fingerprint(schema) != survey.get("schema_hash"):
+                        raise SchemaError("该问卷的题目结构与上传 CSV 不一致，请新建归档问卷")
             else:
-                seen.add(key)
-        records.append(record)
+                survey = create_survey_from_import(
+                    title=title or f"历史问卷导入 · {meta['filename']}",
+                    description=description,
+                    kind=kind,
+                    schema=schema,
+                    source_filename=meta["filename"], conn=conn,
+                )
 
-    batch_id = f"IMP{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}"
-    for record in records:
-        record["batch_id"] = batch_id
-    written = append_responses(survey["id"], records)
+            records: list[dict[str, Any]] = []
+            seen: set[tuple[str, str]] = set()
+            duplicate_count = 0
+            for index, row in enumerate(rows, start=2):
+                answers = {question["id"]: row.get(question.get("source_column", ""), "") for question in schema}
+                platform = parse_platform_meta(row, platform_map)
+                record = build_response_record(
+                    survey, answers, origin="import", platform=platform,
+                    batch_id="", raw_row=index, strict=False,
+                )
+                key = (record.get("rater", ""), record.get("stimulus_id", ""))
+                if mark_duplicates and all(key):
+                    if key in seen:
+                        record["flags"].append("duplicate")
+                        record["valid"] = False
+                        duplicate_count += 1
+                    else:
+                        seen.add(key)
+                records.append(record)
 
-    IMPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    (IMPORTS_DIR / f"{batch_id}.source.csv").write_bytes((STAGING_DIR / f"{_safe(staging_id)}.csv").read_bytes())
-    batch = {
-        "batch_id": batch_id,
-        "survey_id": survey["id"],
-        "filename": meta["filename"],
-        "encoding": meta["encoding"],
-        "kind": kind,
-        "sha256": meta["sha256"],
-        "schema_hash": survey.get("schema_hash"),
-        "schema_version": survey.get("schema_version"),
-        "column_map": platform_map,
-        "n_rows": len(rows),
-        "n_written": written,
-        "n_valid": sum(1 for record in records if record["valid"]),
-        "n_duplicates": duplicate_count,
-        "n_invalid": sum(1 for record in records if not record["valid"]) - duplicate_count,
-        "created_at": _now(),
-    }
-    (IMPORTS_DIR / f"{batch_id}.json").write_text(
-        json.dumps(batch, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    # 暂存文件保留 24 小时内可重试；这里直接清理，避免堆积
-    (STAGING_DIR / f"{_safe(staging_id)}.csv").unlink(missing_ok=True)
-    (STAGING_DIR / f"{_safe(staging_id)}.json").unlink(missing_ok=True)
+            batch_id = f"IMP{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}"
+            for record in records:
+                record["batch_id"] = batch_id
+            written = survey_db.save_responses(conn, survey["id"], records)
+            batch = {
+                "batch_id": batch_id,
+                "survey_id": survey["id"],
+                "filename": meta["filename"],
+                "encoding": meta["encoding"],
+                "kind": kind,
+                "sha256": meta["sha256"],
+                "schema_hash": survey.get("schema_hash"),
+                "schema_version": survey.get("schema_version"),
+                "column_map": platform_map,
+                "n_rows": len(rows),
+                "n_written": written,
+                "n_valid": sum(1 for record in records if record["valid"]),
+                "n_duplicates": duplicate_count,
+                "n_invalid": sum(1 for record in records if not record["valid"]) - duplicate_count,
+                "created_at": _now(),
+            }
+            survey_db.save_import(conn, batch)
+            conn.execute("DELETE FROM survey_import_staging WHERE token=?", (staging_id,))
+            IMPORTS_DIR.mkdir(parents=True, exist_ok=True)
+            target = IMPORTS_DIR / f"{batch_id}.source.csv"
+            with target.open("xb") as handle:
+                created_source = target
+                handle.write(source)
+    except Exception:
+        if created_source is not None:
+            created_source.unlink(missing_ok=True)
+        raise
+    try:
+        (STAGING_DIR / f"{staging_id}.csv").unlink(missing_ok=True)
+    except OSError:
+        # The token was consumed in SQLite, so cleanup can safely be retried.
+        pass
     return {"batch": batch, "survey": _public(survey)}
 
 
 @managed("imports", id_key="batch_id", title_key="filename")
 def list_imports() -> list[dict[str, Any]]:
-    if not IMPORTS_DIR.exists():
-        return []
-    batches = []
-    for path in sorted(IMPORTS_DIR.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
-        try:
-            batches.append(json.loads(path.read_text(encoding="utf-8")))
-        except (json.JSONDecodeError, OSError):
-            continue
-    return batches
+    return survey_db.list_imports()
 
 
 def import_detail(batch_id: str) -> dict[str, Any] | None:
-    path = IMPORTS_DIR / f"{_safe(batch_id)}.json"
-    if not path.exists():
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", batch_id):
         return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
+    return survey_db.get_import(batch_id)
 
 
 def set_client_ip_meta(record: dict[str, Any], client_ip: str) -> None:

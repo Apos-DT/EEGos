@@ -7,7 +7,6 @@ HTTP 层只负责建任务并立刻返回 job id，前端轮询 ``/api/jobs/{id}
 
 from __future__ import annotations
 
-import json
 import re
 from io import BytesIO
 from datetime import datetime
@@ -30,6 +29,7 @@ from ..eeg import list_uploads, output_for, report_for, resolve_upload, save_upl
 from ..jobs import manager
 from ..schemas import EEGProcessRequest, FeatureRequest, MergeRequest, TrainRequest
 from ..services import (
+    experiment_metrics,
     experiments_payload,
     list_experiments,
     list_feature_datasets,
@@ -121,10 +121,10 @@ async def api_experiment(run_id: str) -> dict[str, Any]:
     path = resolve_experiment(run_id)
     if not path:
         raise HTTPException(status_code=404, detail="实验不存在")
-    metrics_path = path / "metrics.json"
-    if not metrics_path.exists():
+    metrics = await run_in_threadpool(experiment_metrics, run_id)
+    if metrics is None:
         raise HTTPException(status_code=404, detail="指标文件不存在")
-    return json.loads(metrics_path.read_text(encoding="utf-8"))
+    return metrics
 
 
 @router.get("/api/experiments/{run_id}/report", response_class=HTMLResponse)

@@ -60,12 +60,12 @@ async def api_system() -> dict[str, Any]:
 
 @router.get("/api/jobs")
 async def api_jobs(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
-    return {"jobs": [job.to_dict(include_logs=False) for job in manager.list(limit)]}
+    return {"jobs": await run_in_threadpool(manager.history, limit)}
 
 
 @router.get("/api/jobs/{job_id}")
 async def api_job(job_id: str) -> dict[str, Any]:
-    job = manager.get(job_id)
+    job = await run_in_threadpool(manager.get, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="任务不存在")
     return job_payload(job)

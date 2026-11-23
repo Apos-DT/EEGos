@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +29,39 @@ from .config import (
     SOURCE_AUDIO_CANDIDATES,
     SOURCE_VIDEO_CANDIDATES,
     VIDEO_DIR,
-    cache_by,
+    fingerprint,
 )
+from .media_db import read_snapshot, write_snapshot
+from .record_store import StoreError
+
+
+def _path_label(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
+
+
+def _input_signature() -> str:
+    sources = (
+        VIDEO_DIR, AUDIO_DIR, source_dir("video"), source_dir("audio"),
+        *MAPPING.values(), *QUALITY.values(), SELECTED,
+    )
+    return sha256(repr(fingerprint(sources)).encode("utf-8")).hexdigest()
+
+
+def migrate_legacy() -> None:
+    """Populate the media index once while retaining the old manifest verbatim."""
+    payload, _ = read_snapshot()
+    if payload is not None:
+        return
+    if not MANIFEST.exists():
+        build_manifest(copy_missing=False)
+        return
+    try:
+        old = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        if not isinstance(old, dict) or not isinstance(old.get("items"), list):
+            raise ValueError("items")
+        write_snapshot(old, None, initial=True)
+    except (AttributeError, KeyError, TypeError, ValueError, OSError, sqlite3.IntegrityError) as exc:
+        raise StoreError("旧素材清单无法迁移，原文件已保留") from exc
 
 
 def _first_existing(paths: list[Path]) -> Path:
@@ -99,6 +132,10 @@ def build_manifest(copy_missing: bool = False) -> dict[str, Any]:
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    previous, _ = read_snapshot()
+    previous_items = {item["id"]: item for item in previous["items"]} if previous else {}
+    has_selection = SELECTED.is_file()
+    before = _input_signature()
     items: list[dict[str, Any]] = []
     for modality in ("video", "audio"):
         mapping, meta = _metadata(modality)
@@ -118,11 +155,13 @@ def build_manifest(copy_missing: bool = False) -> dict[str, Any]:
         filenames.update(p.name for p in source_files)
         for filename in sorted(filenames, key=lambda value: (len(value), value)):
             path = media_path(modality, filename)
-            info = mapping.get(filename, {})
-            q = quality.get(filename, {})
+            item_id = f"{modality}/{filename}"
+            stored = previous_items.get(item_id, {})
+            info = mapping.get(filename, stored)
+            q = quality.get(filename, stored)
             items.append(
                 {
-                    "id": f"{modality}/{filename}",
+                    "id": item_id,
                     "modality": modality,
                     "filename": filename,
                     "category": info.get("category", ""),
@@ -132,8 +171,8 @@ def build_manifest(copy_missing: bool = False) -> dict[str, Any]:
                     "grade": q.get("grade", ""),
                     "mean_valence": q.get("mean_valence"),
                     "mean_arousal": q.get("mean_arousal"),
-                    "selected": filename in selected,
-                    "selection_rank": selected.get(filename, 0),
+                    "selected": filename in selected if has_selection else stored.get("selected", False),
+                    "selection_rank": selected.get(filename, 0) if has_selection else stored.get("selection_rank", 0),
                     "available": bool(path and path.exists()),
                     "managed": bool((directory / filename).exists()),
                     "size_mb": round(path.stat().st_size / 1024 / 1024, 2) if path and path.exists() else 0,
@@ -141,42 +180,32 @@ def build_manifest(copy_missing: bool = False) -> dict[str, Any]:
             )
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "managed_dir": str(MEDIA_DIR.relative_to(ROOT)),
+        "managed_dir": _path_label(MEDIA_DIR),
         "source": {
-            "video": str(source_dir("video").relative_to(ROOT)),
-            "audio": str(source_dir("audio").relative_to(ROOT)),
+            "video": _path_label(source_dir("video")),
+            "audio": _path_label(source_dir("audio")),
         },
         "items": items,
-        "counts": {
-            "video": sum(1 for item in items if item["modality"] == "video"),
-            "audio": sum(1 for item in items if item["modality"] == "audio"),
-            "managed": sum(1 for item in items if item["managed"]),
-            "available": sum(1 for item in items if item["available"]),
-        },
     }
-    MANIFEST.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return payload
+    after = _input_signature()
+    # An explicit sync copies files and therefore changes the managed-directory
+    # signature itself. If other readers see a change during a passive scan, let
+    # the next read reconcile rather than caching a possibly mixed snapshot.
+    signature = after if copy_missing or before == after else None
+    write_snapshot(payload, signature)
+    return read_snapshot()[0]
 
 
 def load_manifest(refresh: bool = True) -> dict[str, Any]:
-    if refresh or not MANIFEST.exists():
+    payload, signature = read_snapshot()
+    if payload is None:
+        migrate_legacy()
+        payload, signature = read_snapshot()
+    if refresh and signature != _input_signature():
         return build_manifest(copy_missing=False)
-    try:
-        return json.loads(MANIFEST.read_text(encoding="utf-8"))
-    except Exception:
-        return build_manifest(copy_missing=False)
+    return payload
 
 
-# 按「输入源」签名缓存，而不是按 manifest 自身：build_manifest 每次都会重写
-# manifest.json，若把 manifest 的 mtime 纳入签名，就会写一次失效一次、永不命中。
-@cache_by(
-    "media_library",
-    lambda: VIDEO_DIR,
-    lambda: AUDIO_DIR,
-    lambda: list(MAPPING.values()),
-    lambda: list(QUALITY.values()),
-    lambda: SELECTED,
-)
 def _library_payload() -> dict[str, Any]:
     data = load_manifest(refresh=True)
     items = data["items"]
@@ -211,4 +240,5 @@ def item_by_id(item_id: str) -> dict[str, Any] | None:
 
 
 def sync_library() -> dict[str, Any]:
+    migrate_legacy()
     return build_manifest(copy_missing=True)

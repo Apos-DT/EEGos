@@ -117,7 +117,7 @@ artifacts/、data/、deliverables/（同一套事实源）
 POST /api/{audit|selection|features|train}/run
   → JobManager.submit(kind, title, runner)
   → status: queued → running → success/failed
-  → logs 追加，写 artifacts/web_jobs/{id}.json
+  → 任务状态和追加日志写入 SQLite
 GET /api/jobs/{id}
   → 前端每 1.4 s 轮询，更新控制台/进度/状态
 ```
@@ -156,7 +156,7 @@ GET /api/jobs/{id}
 | POST | `/api/media/sync` | 从源目录同步到 `data/media` |
 | POST | `/api/public/surveys/{token}/sessions` | 被试打开链接后创建作答会话 |
 | GET | `/q/{token}/media/{session_id}` | 被试端 Range 流式播放 |
-| POST | `/api/public/surveys/{token}/sessions/{id}/answers` | 按 schema 提交逐题答卷（写入 JSONL） |
+| POST | `/api/public/surveys/{token}/sessions/{id}/answers` | 按 schema 提交逐题答卷，写入 SQLite |
 | GET | `/api/public/surveys/{token}/sessions/{id}/result` | 被试回看本轮逐题作答 |
 | GET | `/api/surveys/{id}/responses` | 答卷列表（完整记录） |
 | GET | `/api/surveys/{id}/responses/{response_id}` | 单份答卷详情 + 题目定义 |
@@ -225,7 +225,7 @@ python -m webapp          # 等价的手动方式
 - 管理端口令：`$env:EEG_WEB_TOKEN="自定义字符串"`。启用后除 `/q`、`/api/public`、`/api/health` 外全部要求令牌，从链接带一次 `?token=` 即写入 Cookie（7 天）。**把服务暴露到局域网采集时必须设置**，否则同网段任何人可查看并导出全部答卷；
 - 容器：`docker build -t eeg-emostudio .`，运行示例见根目录 README；
 - 测试：`python -m unittest discover -s tests -v`（58 项，含 Web 与问卷/素材测试）；
-- 任务日志：`artifacts/web_jobs/`。
+- 任务日志：`data/emostudio.sqlite3` 的 `jobs` 与 `job_logs` 表。旧 JSON 日志保留供追溯。
 
 ---
 

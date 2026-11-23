@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,9 @@ class ExperimentDiscoveryTests(unittest.TestCase):
         self.root = Path(temp.name)
         self.experiments = self.root / "experiments"
         self.experiments.mkdir()
+        mocked_db = patch.dict(os.environ, {"EEG_DB_PATH": str(self.root / "test.sqlite3")})
+        mocked_db.start()
+        self.addCleanup(mocked_db.stop)
         for name, value in (("ARTIFACTS", self.root), ("EXPERIMENTS_DIR", self.experiments)):
             mocked = patch.object(services, name, value)
             mocked.start()
@@ -51,6 +55,7 @@ class ExperimentDiscoveryTests(unittest.TestCase):
         self.write_metrics(run, .61234)
         record = self.client.get("/api/experiments").json()["experiments"][0]
         self.assertEqual(record["accuracy"], .61234)
+        self.assertEqual(self.client.get(f"/api/experiments/{run.name}").json()["overall"]["accuracy"], .61234)
         (run / "metrics.json").unlink()
         self.assertEqual(self.client.get("/api/experiments").json()["count"], 0)
 

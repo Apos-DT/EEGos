@@ -10,17 +10,23 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
+import sqlite3
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from .common import BASE_DIR
 from .config import ACCESS_TOKEN
 from .content import APP_NAME, APP_VERSION
 from .routers import ALL_ROUTERS
 from .record_store import StoreError
+
+logger = logging.getLogger(__name__)
 
 # 被试端与健康检查永远公开；管理端在设置了 EEG_WEB_TOKEN 时要求令牌。
 PUBLIC_PREFIXES = ("/static/", "/q/", "/api/public/", "/api/health")
@@ -74,6 +80,14 @@ async def _access_guard(request: Request, call_next):
     return response
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from .migrate import migrate_all
+
+    await run_in_threadpool(migrate_all)
+    yield
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{APP_NAME} API",
@@ -81,11 +95,18 @@ def create_app() -> FastAPI:
         description="EEG 情绪识别数据制备与模型训练工作台的本地 API。",
         docs_url="/api/swagger",
         redoc_url=None,
+        lifespan=lifespan,
     )
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
     @app.exception_handler(StoreError)
     async def record_store_unavailable(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=503)
+
+    @app.exception_handler(sqlite3.OperationalError)
+    async def database_unavailable(request, exc):
+        logger.error("SQLite request failed", exc_info=exc)
+        return JSONResponse({"detail": "数据库暂不可用，请稍后重试或检查服务日志。"}, status_code=503)
+
     for router in ALL_ROUTERS:
         app.include_router(router)
     # 常驻注册：未设令牌时守卫直接放行。这样令牌逻辑可被测试覆盖，

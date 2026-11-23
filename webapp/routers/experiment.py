@@ -1,8 +1,6 @@
 """旧版现场实验会话（兼容层）。
 
-新版问卷把逐题答卷写进 ``data/survey_responses/*.jsonl``；旧版现场实验把
-固定 SAM 量表写进 ``data/experiment/sessions/*.json``。两种通道共用同一个
-会话目录，因此下面这些接口保留下来，主要用于：
+逐题答卷、旧版固定 SAM 量表答卷和会话共用 SQLite。以下接口用于：
 
 1. 读取历史会话（``/api/experiment/sessions*``、``/api/experiment/responses*``）；
 2. 为公开问卷的媒体播放服务提供会话级视频路径（``/experiment/video``）。
@@ -46,7 +44,7 @@ router = APIRouter()
 async def experiment_page(request: Request) -> Response:
     """旧版现场采集页已下线，统一收敛到问卷数据页。
 
-    新版公开问卷的会话与旧版共用 ``data/experiment/sessions`` 目录，旧页面
+    公开问卷的会话与旧版共用会话表，旧页面
     会把这些会话误当成「现场实验」并渲染固定量表。带 session 参数访问时
     直接定位到该轮答卷详情；旧版会话（无 survey_id）则回到总览。
     """

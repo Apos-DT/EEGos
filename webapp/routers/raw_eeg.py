@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from eeg_emostudio.data.raw_processing import RawConfig, inspect_raw, raw_file
+from ..artifact_index import index_records
 from ..config import ROOT, SEED_IV_DIR, OUTPUT_DIR, invalidate
 from ..jobs import manager
 from ..common import job_payload
@@ -76,16 +77,26 @@ async def raw_inspect(session:int=1,subject:int=1):
     except (ValueError,OSError) as exc: raise HTTPException(422,str(exc)) from exc
 
 
+def _report_summary(path):
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+    if not isinstance(report, dict) or not report.get("run_id"):
+        return None
+    fields = ("run_id", "status", "started_at", "finished_at", "n_samples",
+              "n_trials", "n_rejected", "config", "ica", "error")
+    return {key: report.get(key) for key in fields}
+
+
+def sync_run_index():
+    runs = index_records("eeg_processing", OUTPUT_DIR.glob("raw-*/eeg_report.json"), _report_summary)
+    return sorted(runs, key=lambda item: item.get("started_at") or "", reverse=True)
+
+
 @managed("eeg_runs", id_key="run_id", title_key="display_name")
 def list_runs(limit=30):
-    runs=[]
-    paths=sorted(OUTPUT_DIR.glob("raw-*/eeg_report.json"),key=lambda p:p.stat().st_mtime,reverse=True)
-    for path in paths if limit is None else paths[:limit]:
-        try:
-            r=json.loads(path.read_text(encoding="utf-8"))
-            runs.append({k:r.get(k) for k in ("run_id","status","started_at","finished_at","n_samples","n_trials","n_rejected","config","ica","error")})
-        except (ValueError,OSError): pass
-    return runs
+    return sync_run_index()[:limit]
 
 
 @router.get("/runs")

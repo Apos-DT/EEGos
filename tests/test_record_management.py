@@ -1,8 +1,10 @@
 import hashlib
 import io
 import json
+import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,6 +23,8 @@ class RecordManagementTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         mocked = patch.object(store, "STORE_DIR", self.root / "record_management")
+        mocked.start(); self.addCleanup(mocked.stop)
+        mocked = patch.dict(os.environ, {"EEG_DB_PATH": str(self.root / "app.sqlite3")})
         mocked.start(); self.addCleanup(mocked.stop)
         self.client = TestClient(app)
         self.rows = [{"id": "sample/一", "name": "原始名称", "accuracy": .51, "survey_id": "test-survey"},
@@ -102,6 +106,41 @@ class RecordManagementTests(unittest.TestCase):
         self.assertEqual(self.change(title="new").status_code, 503)
         self.assertEqual(path.read_text(encoding="utf-8"), "broken storage")
 
+    def test_legacy_overlay_migrates_once_and_keeps_edits_and_audit_events(self):
+        store.STORE_DIR.mkdir()
+        path = store.STORE_DIR / "state.json"
+        at = "2026-11-23T12:00:00"
+        prior = {**store.empty_metadata(), "title": "旧名称", "revision": 1, "updated_at": at}
+        fixture = {
+            "records": {"media": {"sample/一": prior}},
+            "events": [{"resource": "media", "id": "sample/一", "before": store.empty_metadata(),
+                        "after": prior, "at": at}],
+            "uploads": {"documents": {"legacy-doc": {"title": "旧文档"}}},
+        }
+        path.write_text(json.dumps(fixture, ensure_ascii=False), encoding="utf-8")
+        original = path.read_bytes()
+        store.migrate_legacy()
+        self.assertEqual(store.metadata("media", "sample/一")["title"], "旧名称")
+        self.assertEqual(store.uploads("documents")["legacy-doc"]["title"], "旧文档")
+        self.assertEqual(self.change(title="新名称", revision=1).status_code, 200)
+        store.migrate_legacy()
+        self.assertEqual(store.metadata("media", "sample/一")["title"], "新名称")
+        self.assertEqual(len(store.snapshot()["events"]), 2)
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_concurrent_revision_writes_preserve_single_winner(self):
+        def edit(title):
+            try:
+                store.update("media", "sample/一", {"title": title}, 0)
+                return "ok"
+            except store.ConflictError:
+                return "conflict"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(edit, ["first", "second"]))
+        self.assertCountEqual(results, ["ok", "conflict"])
+        self.assertEqual(len(store.snapshot()["events"]), 1)
+
     def test_managed_views_filter_trash_and_keep_sources_unchanged(self):
         self.change(title="显示名称", notes="备注")
         rows = store.decorate_rows("media", self.rows)
@@ -133,7 +172,7 @@ class RecordManagementTests(unittest.TestCase):
     def test_trashed_survey_public_link_is_disabled_until_restore(self):
         from webapp import surveys
         fixture = {"id":"test-survey", "token":"public-test-token"}
-        with patch.object(surveys, "_all", return_value=[fixture]):
+        with patch.object(surveys.survey_db, "get_survey_by_token", return_value=fixture):
             self.assertEqual(surveys.survey_by_token("public-test-token"), fixture)
             store.update("surveys", fixture["id"], {"deleted_at":"2026-11-20"}, 0)
             with self.assertRaises(FileNotFoundError):

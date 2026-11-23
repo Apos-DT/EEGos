@@ -1,6 +1,6 @@
 # EEG-EmoStudio Web Console
 
-本地研究控制台，FastAPI + Jinja2 + 原生 CSS/JS；主界面无 CDN、无 node 构建、无外部数据库。
+本地研究控制台，FastAPI + Jinja2 + 原生 CSS/JS。业务记录使用本地 SQLite，媒体和科研产物保存在文件系统。
 
 ```powershell
 start.bat             # Windows 双击；./start.sh 用于 Linux/macOS
@@ -33,7 +33,7 @@ python -m webapp      # 等价，容器方式见根目录 README
 
 | `/audit` | 历史预评价 | 240 材料/2,356 问卷归档，不进入日常流程 |
 | `/eeg` | 原始 EEG 处理 | EEGLAB 上传、滤波/ICA/分段/DE |
-| `/datasets` | 数据集与特征 | 上传 raw.npz、提取 DE、管理特征集 |
+| `/datasets` | 数据集 | 数据资源分组下的跨模态目录。切换到 `?tab=eeg` 可上传 EEG raw.npz、提取 DE 和管理特征集 |
 | `/training` | 模型训练 | 配置、后台任务、日志、指标与图表 |
 | `/experiments` | 实验记录 | 比较运行、报告/指标链接 |
 | `/documents` | 项目文档 | 14 份 DOCX/PDF 下载 |
@@ -43,11 +43,12 @@ python -m webapp      # 等价，容器方式见根目录 README
 
 ### 模块地图（V0.7 骨架重排）
 
-`main.py` 从 1333 行降到约 90 行，只负责装配；新增接口去对应域的 router 里加，不必再动装配文件。
+`main.py` 负责应用装配和启动时的数据库迁移。业务接口由对应域的 router 提供。
 
 | 文件 | 职责 |
 |---|---|
 | `config.py` | 唯一配置源：目录（转发 `eeg_emostudio/paths.py`）、host/port/token、按 mtime 签名的进程内缓存 |
+| `db.py`、`db_schema/` | SQLite 事务、连接和版本化表结构 |
 | `common.py` | 模板环境、`render()`、任务序列化、Range 媒体响应、CSV 下载、问卷读取 |
 | `schemas.py` | 全部请求体模型（`schema` 字段用 alias 规避 Pydantic 内置方法冲突） |
 | `routers/core.py` | 工作台、系统状态、任务查询 |
@@ -64,23 +65,40 @@ python -m webapp      # 等价，容器方式见根目录 README
 API 文档：`/api/swagger`。  
 核心 API：`/api/overview`、`/api/surveys`、`/api/surveys/{id}/responses`、`/api/surveys/{id}/responses/{rid}`、`/api/media`、`/api/public/surveys/{token}`、`/api/experiment/responses`（旧版兼容）、`/api/eeg/uploads`、`/api/eeg/process`、`/api/datasets`、`/api/datasets/merge`、`/api/experiments`、`/api/jobs/{id}`。
 
-任务在进程内线程池运行，日志写入 `artifacts/web_jobs/`；训练/特征任务通过现有 CLI 子进程执行，避免 Web 层复制算法。
+任务在进程内线程池运行，任务状态和日志写入 SQLite。训练和特征任务继续调用现有 CLI 子进程。
 
-**读盘缓存**：工作台统计、素材清单、答卷计数、会话汇总这些「全量扫盘」的聚合函数，按目录签名（文件数 + 最大 mtime + 总字节 + 目录 mtime）缓存在进程内，文件一变签名就变、自动重算，不需要手动清缓存。写操作不需要显式失效——签名本身来自磁盘。缓存内保存深拷贝，因为 `overview()` 会就地合并新版与旧版答卷计数，共享对象会导致重复累加。
+## 本地 SQLite
+
+缺省数据库为 `data/emostudio.sqlite3`，可用 `EEG_DB_PATH` 指向另一个本地文件。每次连接启用外键，使用 WAL 支持后台任务写入日志时继续查询。核心字段通过独立列和索引查询，变化较大的量表快照、答案内容和模型参数使用表内 JSON 保留原结构。
+
+| 数据 | SQLite 中的记录 | 保留在磁盘的文件 |
+|---|---|---|
+| 问卷与实验采集 | 问卷、会话、答卷、导入批次及暂存元数据 | 导入源 CSV、历史 JSON/JSONL |
+| 素材库 | 文件标识、模态、路径、评分信息与同步状态 | 音视频、原始来源表 |
+| 数据集与 EEG | 数据集目录及模态、上传记录、信号与特征文件索引 | 发布包、MAT、SET、NPZ、处理报告及 manifests |
+| 作业与模型实验 | 后台任务、日志、外部训练观测、实验索引和指标快照 | 检查点、图表、可独立复查的 JSON/HTML 报告与 CLI 进度文件 |
+| 记录管理 | 标签、备注、软删除、上传登记、审计事件 | 原始资源文件 |
+| 用户与认证 | `users`、`auth_sessions` | 暂无登录或注册入口 |
+
+启动时自动创建数据库并迁移历史记录。每个业务域记录迁移进度，重复启动不会追加重复记录，也不会用旧 JSON 覆盖后续修改。原文件保留用于追溯。外部 CLI 或 DDA 产生新报告后，实验索引按文件签名更新。
+
+在项目根目录可运行 `python -m webapp.migrate` 预先迁移，并查看完整性检查和各表记录数。SQLite 启用 WAL 后，运行期间使用 SQLite 备份接口生成一致的备份文件。离线备份可在停止服务后复制数据库，并另外备份原始媒体、数据文件和科研产物。
+
+后续注册表单预留用户名、邮箱、显示名、密码和确认密码，登录表单预留用户名或邮箱与密码。账户表包含密码哈希、角色、状态及验证时间。确认密码仅用于校验，密码明文不入库。会话表预留令牌哈希、到期和撤销时间。现有管理端令牌机制与公开问卷访问方式继续生效。
 
 ## 问卷 schema 与元数据管理（V0.6）
 
-不再依赖问卷星：问卷可自定义题目，历史问卷星 CSV 可导入并纳入统一管理。沿用纯 JSON 文件方案，无数据库、无新依赖。
+问卷可自定义题目，历史问卷星 CSV 可导入并纳入统一管理。
 
-**文件布局**（`data/` 下的运行时数据由 `.gitignore` 排除）
+**源文件与迁移目录**（业务记录迁入 SQLite，旧文件留作追溯）
 
 ```text
-data/surveys/{survey_id}.json                 问卷定义（含版本化 schema）
-data/survey_responses/{survey_id}.jsonl       答卷，每行一条完整记录（追加写）
-data/survey_imports/{batch_id}.json           导入批次登记（行数/指纹/列映射）
+data/surveys/{survey_id}.json                 旧问卷定义
+data/survey_responses/{survey_id}.jsonl       旧答卷记录
+data/survey_imports/{batch_id}.json           旧导入批次登记
 data/survey_imports/{batch_id}.source.csv     原始导出副本，按原始行号回查
 data/survey_imports/_staging/                 两步导入的暂存区
-data/experiment/sessions/                    会话播放进度（新版/旧版共用，仅存游标）
+data/experiment/sessions/                    旧会话及固定量表答卷
 ```
 
 **题目 schema**：`webapp/questionnaire.py` 定义 5 种题型（text / rating / single / multiple / textarea）。每题可标注 `role`（rater、stimulus、valence、arousal、clarity、emotion、coverage、stability、familiarity、comprehension、issues、other 等），带角色的列才能参与归一化与质量评分；归一化复用 `eeg_emostudio/audit/normalize.py`，不重复实现清洗规则。内置视频/音乐两套 12 题标准量表，与既有问卷星导出逐列对应。
@@ -97,4 +115,4 @@ data/experiment/sessions/                    会话播放进度（新版/旧版�
 
 **新增 API**：`/api/questionnaire/templates`、`/api/surveys/{id}/schema|metadata|quality|responses|responses/{response_id}|responses.csv|responses.clean.csv`、`/api/surveys/import/preview|commit`、`/api/surveys/imports`、`/api/surveys/imports/{batch}/source.csv`、`/api/public/surveys/{token}/sessions/{id}/answers|result`。
 
-旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道，公开页会自动回退到固定表单；其历史会话数据仍可通过 `/api/experiment/responses.csv` 导出。全部 58 项自动化测试通过。
+旧版固定量表问卷（无 `schema` 字段）仍走原有 `submit_response` 通道，公开页会自动回退到固定表单，历史会话数据可通过 `/api/experiment/responses.csv` 导出。

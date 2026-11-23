@@ -8,13 +8,16 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-import webapp.experiment as experiment
+from webapp import record_store, survey_db
+from webapp.db import transaction
 import webapp.questionnaire as questionnaire
 import webapp.survey_meta as survey_meta
 import webapp.surveys as surveys
@@ -142,24 +145,22 @@ class RepositoryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
-        self.saved: list[tuple[object, str, object]] = []
+        self.addCleanup(self.tmp.cleanup)
+        self.enterContext(patch.dict(os.environ, {"EEG_DB_PATH": str(root / "test.sqlite3")}))
+        self.enterContext(patch.object(record_store, "STORE_DIR", root / "record_management"))
+        for name, path in {
+            "SURVEYS_DIR": root / "surveys", "RESPONSES_DIR": root / "responses",
+            "SESSIONS_DIR": root / "sessions", "IMPORTS_DIR": root / "imports",
+            "STAGING_DIR": root / "imports" / "_staging",
+        }.items():
+            self.enterContext(patch.object(survey_db, name, path))
+        self.enterContext(patch.object(survey_meta, "IMPORTS_DIR", root / "imports"))
+        self.enterContext(patch.object(survey_meta, "STAGING_DIR", root / "imports" / "_staging"))
 
-        def patch(module, name, value):
-            self.saved.append((module, name, getattr(module, name)))
-            setattr(module, name, value)
-
-        patch(surveys, "SURVEYS_DIR", root / "surveys")
-        patch(surveys, "RESPONSES_DIR", root / "responses")
-        patch(surveys, "SESSIONS_DIR", root / "sessions")
-        patch(experiment, "SESSIONS_DIR", root / "sessions")
-        patch(survey_meta, "RESPONSES_DIR", root / "responses")
-        patch(survey_meta, "IMPORTS_DIR", root / "imports")
-        patch(survey_meta, "STAGING_DIR", root / "imports" / "_staging")
-
-    def tearDown(self):
-        for module, name, value in reversed(self.saved):
-            setattr(module, name, value)
-        self.tmp.cleanup()
+    @staticmethod
+    def _seed_session(session):
+        with transaction(write=True) as conn:
+            survey_db.save_session(conn, session)
 
     def _import(self) -> tuple[dict, str]:
         preview = survey_meta.preview_import(make_wjx_csv(), "情绪诱发情况评估（视频）.csv")
@@ -237,10 +238,7 @@ class RepositoryTests(unittest.TestCase):
             "sequence": [{"stimulus_id": "3.mp4", "modality": "video", "category": "HVHA"}],
             "responses": [], "created_at": "2026-11-15T21:00:00", "updated_at": "2026-11-15T21:00:00",
         }
-        surveys.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-        (surveys.SESSIONS_DIR / "ETEST01.json").write_text(
-            json.dumps(session, ensure_ascii=False), encoding="utf-8"
-        )
+        self._seed_session(session)
         answers = {
             "q1": "P01", "q2": "3.mp4", "q3": "7", "q4": "6",
             "q5": "产生了较为清晰的主导情绪", "q6": "愉快", "q7": "总时长75%以上",
@@ -312,15 +310,16 @@ class RepositoryTests(unittest.TestCase):
 
     def test_legacy_survey_uses_schema_fallback_everywhere(self):
         """无 schema 的旧问卷在统计与导出侧也必须拿到一致的默认量表。"""
-        surveys.SURVEYS_DIR.mkdir(parents=True, exist_ok=True)
+        survey_db.SURVEYS_DIR.mkdir(parents=True, exist_ok=True)
         legacy = {
             "id": "QLEGACY", "token": "legacytok", "title": "旧版问卷", "description": "",
             "created_at": "2026-01-01T00:00:00", "status": "open",
             "settings": {}, "materials": [],
         }
-        (surveys.SURVEYS_DIR / "QLEGACY.json").write_text(
+        (survey_db.SURVEYS_DIR / "QLEGACY.json").write_text(
             json.dumps(legacy, ensure_ascii=False), encoding="utf-8"
         )
+        survey_db.migrate_legacy()
         self.assertEqual(len(surveys.get_schema(legacy)), 12)
         self.assertEqual(survey_meta.survey_metadata("QLEGACY")["n_questions"], 12)
         record = survey_meta.build_response_record(legacy, {"q2": "1.mp4"}, strict=False)
@@ -330,6 +329,43 @@ class RepositoryTests(unittest.TestCase):
         client = TestClient(app, raise_server_exceptions=False)
         self.assertEqual(client.get("/api/surveys/QLEGACY/responses.csv").status_code, 200)
         self.assertEqual(client.get("/api/surveys/QLEGACY/metadata").status_code, 200)
+
+    def test_legacy_migration_is_atomic_and_preserves_originals(self):
+        """A broken line does not import a partial history, and retries do not restore old state."""
+        for directory in (survey_db.SURVEYS_DIR, survey_db.SESSIONS_DIR, survey_db.RESPONSES_DIR):
+            directory.mkdir(parents=True)
+        survey = {"id": "QLEGACY", "token": "legacy", "title": "历史问卷",
+                  "created_at": "2026-01-01T00:00:00", "status": "open"}
+        session = {"id": "ELEGACY", "survey_id": "QLEGACY", "participant_code": "P01",
+                   "status": "completed", "created_at": "2026-01-01T00:00:00",
+                   "updated_at": "2026-01-01T00:00:00", "current_index": 1,
+                   "responses": [{"response_id": "R0001", "valence": 7}]}
+        answer = {"response_id": "SRLEGACY", "survey_id": "QLEGACY", "session_id": "ELEGACY",
+                  "submitted_at": "2026-01-01T00:00:00", "answers": {"q1": "P01"}}
+        survey_path = survey_db.SURVEYS_DIR / "QLEGACY.json"
+        session_path = survey_db.SESSIONS_DIR / "ELEGACY.json"
+        answer_path = survey_db.RESPONSES_DIR / "QLEGACY.jsonl"
+        survey_path.write_text(json.dumps(survey), encoding="utf-8")
+        session_path.write_text(json.dumps(session), encoding="utf-8")
+        valid_line = json.dumps(answer) + "\n"
+        answer_path.write_text(valid_line + "{broken\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "第 2 行"):
+            survey_db.migrate_legacy()
+        self.assertEqual(survey_db.list_surveys(), [])
+        self.assertEqual(survey_db.list_sessions(), [])
+
+        answer_path.write_text(valid_line, encoding="utf-8")
+        survey_db.migrate_legacy()
+        self.assertEqual(survey_db.list_sessions()[0]["responses"][0]["valence"], 7)
+        self.assertEqual(survey_meta.get_response("QLEGACY", "SRLEGACY")["answers"], {"q1": "P01"})
+        self.assertEqual(surveys.toggle_survey("QLEGACY")["status"], "closed")
+        record_store.update("responses", "SRLEGACY", {"deleted_at": "2026-01-02"}, 0)
+        survey_db.migrate_legacy()
+        self.assertEqual(surveys.load_survey("QLEGACY")["status"], "closed")
+        self.assertEqual(survey_meta.response_table("QLEGACY")["total"], 0)
+        self.assertEqual(survey_meta.total_responses(), 0)
+        self.assertEqual(json.loads(survey_path.read_text(encoding="utf-8"))["status"], "open")
+        self.assertEqual(answer_path.read_text(encoding="utf-8"), valid_line)
 
     def test_web_endpoints(self):
         client = TestClient(app)
@@ -379,10 +415,7 @@ class RepositoryTests(unittest.TestCase):
             "responses": [],
             "created_at": "2026-11-16T00:00:00", "updated_at": "2026-11-16T00:00:00",
         }
-        surveys.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-        (surveys.SESSIONS_DIR / f"{session_id}.json").write_text(
-            json.dumps(session, ensure_ascii=False), encoding="utf-8"
-        )
+        self._seed_session(session)
         return survey["token"], session_id
 
     @staticmethod
@@ -411,8 +444,8 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(survey_meta.total_responses(), 4)
         self.assertEqual(survey_meta.responses_for_session(survey_id, "EUNKNOWN"), [])
 
-    def test_jsonl_answers_advance_session_progress(self):
-        """新版答卷不写 session.responses，进度仍须按 JSONL 正确累加。"""
+    def test_sqlite_answers_advance_session_progress(self):
+        """新版答卷不写 session.responses，进度仍须按独立答卷表正确累加。"""
 
         _, survey_id = self._import()
         token, session_id = self._open_survey_with_session(survey_id, ["1.mp4", "2.mp4"])
@@ -425,6 +458,31 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(second["session"]["status"], "completed")
         self.assertEqual(len(survey_meta.responses_for_session(survey_id, session_id)), 2)
         self.assertEqual(survey_meta.total_responses(), 6)
+
+    def test_online_response_rolls_back_when_cursor_cannot_be_saved(self):
+        _, survey_id = self._import()
+        token, session_id = self._open_survey_with_session(survey_id, ["1.mp4"])
+        with patch.object(survey_db, "save_session", side_effect=OSError("simulated write failure")):
+            with self.assertRaises(OSError):
+                surveys.submit_schema_answers(token, session_id, self._answers("P01", "1.mp4"))
+        self.assertEqual(survey_meta.responses_for_session(survey_id, session_id), [])
+        self.assertEqual(surveys.validate_public_session(token, session_id)["current_index"], 0)
+
+    def test_csv_commit_can_retry_once_after_rollback(self):
+        source = make_wjx_csv()
+        stage = survey_meta.preview_import(source, "rollback.csv")
+        token = stage["staging_id"]
+        with patch.object(survey_db, "save_import", side_effect=OSError("simulated write failure")):
+            with self.assertRaises(OSError):
+                survey_meta.commit_import(token)
+        self.assertEqual(survey_db.list_surveys(), [])
+        self.assertEqual(survey_meta.total_responses(), 0)
+        self.assertEqual(survey_meta.list_imports(), [])
+        result = survey_meta.commit_import(token)
+        csv_path = survey_meta.IMPORTS_DIR / f"{result['batch']['batch_id']}.source.csv"
+        self.assertEqual(csv_path.read_bytes(), source)
+        with self.assertRaisesRegex(questionnaire.SchemaError, "暂存已过期"):
+            survey_meta.commit_import(token)
 
     def test_response_detail_api_and_legacy_redirects(self):
         """详情 API、本轮结果 API 与旧版页面重定向形成完整可达链路。"""
@@ -469,9 +527,7 @@ class RepositoryTests(unittest.TestCase):
             "current_index": 0, "sequence": [], "responses": [],
             "created_at": "2026-11-15T00:00:00", "updated_at": "2026-11-15T00:00:00",
         }
-        (surveys.SESSIONS_DIR / "ELEGACY.json").write_text(
-            json.dumps(old_session, ensure_ascii=False), encoding="utf-8"
-        )
+        self._seed_session(old_session)
         self.assertEqual(
             client.get("/experiment?session=ELEGACY", follow_redirects=False).headers["location"],
             "/survey-data",

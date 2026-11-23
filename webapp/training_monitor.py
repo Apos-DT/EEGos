@@ -15,7 +15,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from .config import ROOT, ARTIFACTS, EXPERIMENTS_DIR, WEB_JOBS_DIR
+from .config import ROOT, EXPERIMENTS_DIR
+from . import run_store
 from .jobs import manager
 
 _lock = threading.Lock()
@@ -175,29 +176,20 @@ def _snapshot():
             if output is None: continue
             group = groups.setdefault(str(output), {"output": output, "params": options, "processes": []})
             group["processes"].append(proc)
-        registry_path = ARTIFACTS / "training_monitor_observed.json"
-        observed = _json(registry_path)
-        changed = False
-        for key, group in groups.items():
-            if key not in observed:
-                observed[key] = {"params": group["params"], "started_at": group["processes"][0].get("started_at")}
-                changed = True
-        if changed:
-            temp = registry_path.with_suffix(".tmp")
-            temp.write_text(json.dumps(observed, ensure_ascii=False), encoding="utf-8")
-            temp.replace(registry_path)
+        observed = run_store.list_observations()
+        new_observations = {
+            key: {"params": group["params"], "started_at": group["processes"][0].get("started_at")}
+            for key, group in groups.items() if key not in observed
+        }
+        run_store.observe_workers(new_observations)
+        observed.update(new_observations)
         for key, observation in observed.items():
             output = _output(key)
             if output:
                 groups.setdefault(str(output), {"output": output, "params": observation.get("params", {}), "processes": [], "observation": observation})
-        jobs = {}
-        for p in WEB_JOBS_DIR.glob("*.json"):
-            job = _json(p)
-            if job.get("id"): jobs[job["id"]] = job
-        jobs.update({job.id: job.to_dict() for job in manager.list(100)})
-        live_ids = {j.id for j in manager.list(100)}
-        for job in jobs.values():
-            if job.get("kind") not in ("train", "external_reproduction"): continue
+        jobs = manager.history(kinds=("train", "external_reproduction"), log_limit=60, recover=False)
+        live_ids = manager.live_ids()
+        for job in jobs:
             runtime = job.get("runtime", {})
             output = _output(runtime.get("output") or job.get("result", {}).get("output"))
             if output is None:
@@ -208,7 +200,7 @@ def _snapshot():
                         if output: break
             if output:
                 group = groups.setdefault(str(output), {"output": output, "params": job.get("params", {}), "processes": []})
-                group["job"] = job
+                group.setdefault("job", job)
             elif job.get("status") in ("queued", "running") and job.get("id") in live_ids:
                 groups[job["id"]] = {"output": None, "params": job.get("params", {}), "processes": [], "job": job}
         tasks = []

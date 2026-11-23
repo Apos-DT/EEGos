@@ -1,9 +1,11 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 import webapp.training_monitor as monitor
+from webapp import run_store
 
 
 class TrainingMonitorTests(unittest.TestCase):
@@ -16,9 +18,9 @@ class TrainingMonitorTests(unittest.TestCase):
         self.experiments.mkdir(); self.jobs.mkdir()
         self.out = self.experiments / "run with spaces"
         self.out.mkdir()
-        self.patches = [patch.object(monitor, "ROOT", self.root), patch.object(monitor, "ARTIFACTS", self.root),
-            patch.object(monitor, "EXPERIMENTS_DIR", self.experiments), patch.object(monitor, "WEB_JOBS_DIR", self.jobs),
-            patch.object(monitor.manager, "list", return_value=[]),
+        self.patches = [patch.dict(os.environ, {"EEG_DB_PATH": str(self.root / "test.sqlite3")}),
+            patch.object(monitor, "ROOT", self.root),
+            patch.object(monitor, "EXPERIMENTS_DIR", self.experiments),
             patch.object(monitor, "gpu_snapshot", return_value={"available":False,"devices":[]})]
         for p in self.patches: p.start(); self.addCleanup(p.stop)
         self.addCleanup(self.reset_cache)
@@ -53,6 +55,7 @@ class TrainingMonitorTests(unittest.TestCase):
 
     def test_completed_sidecar_overrides_stale_running_job(self):
         self.save(self.jobs/"j.json",{"id":"j","kind":"external_reproduction","status":"running","runtime":{"output":str(self.out)}})
+        run_store.migrate_legacy(self.jobs, self.root / "training_monitor_observed.json")
         self.save(self.out/"run_meta.json",{"status":"success","finished_at":"2026-11-20T00:02:00+08:00"})
         with patch.object(monitor,"processes",return_value=[]): result=monitor.snapshot()
         self.assertEqual(result["tasks"][0]["status"],"success")

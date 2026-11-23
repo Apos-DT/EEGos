@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-import json
 from urllib.parse import quote
 
 from . import record_store as store
@@ -25,32 +24,8 @@ RESOURCES = {
 
 @store.managed("jobs", title_key="title")
 def job_records(limit=100):
-    from .config import WEB_JOBS_DIR
     from .jobs import manager
-    rows = {}
-    for path in WEB_JOBS_DIR.glob("*.json"):
-        try:
-            row = json.loads(path.read_text(encoding="utf-8"))
-            row.pop("logs", None)
-            if row.get("id"):
-                rows[row["id"]] = row
-        except (ValueError, OSError):
-            continue
-    live = manager.list(limit if limit is not None else 2**31)
-    live_ids = {job.id for job in live}
-    if any(row.get("status") in {"running", "queued"} and key not in live_ids for key, row in rows.items()):
-        try:
-            from .training_monitor import processes
-            pids = {int(p["ProcessId"]) for p in processes()}
-            for key, row in rows.items():
-                if key not in live_ids and row.get("status") in {"running", "queued"} and row.get("runtime", {}).get("pid") not in pids:
-                    row["status"] = "interrupted"
-        except Exception:
-            pass  # Unknown process state must not be presented as safely stopped.
-    for job in live:
-        rows[job.id] = job.to_dict(include_logs=False)
-    ordered = sorted(rows.values(), key=lambda row: row.get("created_at", ""), reverse=True)
-    return ordered if limit is None else ordered[:limit]
+    return manager.history(limit)
 
 
 def clean(value):
@@ -96,11 +71,11 @@ def source_rows(resource):
 
 def records(resource):
     rows, id_key, title_key = source_rows(resource)
-    state = store.snapshot()
+    metadata = store.metadata_index(resource)
     result = []
     for row in rows:
         record_id = str(row[id_key])
-        meta = store.metadata(resource, record_id, state)
+        meta = metadata.get(record_id) or store.empty_metadata()
         original = row.get("record_meta", {}).get("original_title") or row.get(title_key) or record_id
         url = ""
         if resource == "experiments": url = row.get("report_url", "")

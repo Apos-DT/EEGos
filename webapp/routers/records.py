@@ -198,7 +198,7 @@ async def upload_record(resource: str, request: Request, filename: str = Query(m
 
 @router.get("/documents/file/{record_id}")
 async def download_document(record_id: str):
-    row = store.snapshot().get("uploads", {}).get("documents", {}).get(record_id)
+    row = (await run_in_threadpool(store.uploads, "documents")).get(record_id)
     if not row or not re.fullmatch(r"[a-f0-9]{32}\.(pdf|docx|md|txt)", row.get("file_key", "")):
         raise HTTPException(404, "文档不存在")
     target = store.STORE_DIR / "uploads" / "documents" / row["file_key"]
