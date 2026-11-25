@@ -1,31 +1,34 @@
 {% extends "base.html" %}
 {% from "macros.html" import icon %}
 {% set page_title = '问卷数据' %}
+{% set page_description = '查看主观情绪量表分布、核验答卷质量并导出分析数据。' %}
 {% block title %}问卷数据 · {{ app_name }}{% endblock %}
-{% block styles %}<link rel="stylesheet" href="{{ url_for('static', path='css/survey_data.css') }}?v=20261120-2">{% endblock %}
-{% block actions %}
-<a class="btn btn-soft" href="/surveys">{{ icon('file', 14) }} 问卷管理</a>
-<a class="btn btn-primary" href="/surveys/new">{{ icon('play', 14) }} 新建问卷</a>
-{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', path='css/survey_data.css') }}?v=20261125-5">{% endblock %}
+{% block actions %}{% endblock %}
+{% block footer %}<footer class="survey-data-footer">EmoStudio · 实验采集 · EEG 信号处理 · 模型训练</footer>{% endblock %}
 {% block content %}
 <section class="survey-data-controls" aria-label="问卷选择与概况">
   <div class="survey-data-selector">
+    <div class="survey-page-actions">
+      <a class="btn btn-soft" href="/surveys">问卷管理</a>
+      <button class="btn btn-soft" type="button" onclick="document.querySelector('[data-tab=import]').click()">导入 CSV</button>
+      <details class="survey-export"><summary class="btn btn-primary">导出数据 ▾</summary><div class="survey-export-menu"><a id="exportClean" href="#" aria-disabled="true" tabindex="-1">分析宽表 CSV</a><a id="exportWjx" href="#" aria-disabled="true" tabindex="-1">问卷星兼容 CSV</a></div></details>
+    </div>
     <label for="surveySelect">当前问卷</label>
     <select id="surveySelect" class="select"><option value="">选择问卷…</option>{% for s in surveys %}<option value="{{ s.id }}" {% if s.id == selected %}selected{% endif %}>{{ s.title }} · {{ s.status_label }}</option>{% endfor %}</select>
-    <span class="badge badge-neutral" id="schemaVersionBadge" hidden></span>
+    <span id="schemaVersionBadge" hidden></span><span class="survey-data-updated" id="surveyDataStatus" role="status">正在读取问卷…</span>
     <div class="survey-data-actions">
-      <button type="button" class="btn btn-soft btn-sm" id="reloadSurvey" aria-label="刷新当前问卷数据">{{ icon('refresh', 14) }} 刷新</button>
-      <a class="btn btn-soft btn-sm" id="openSchema" href="#" aria-disabled="true" tabindex="-1">{{ icon('settings', 14) }} 题目设置</a>
-      <details class="survey-export"><summary class="btn btn-soft btn-sm">{{ icon('download', 14) }} 导出</summary><div class="survey-export-menu"><a id="exportClean" href="#" aria-disabled="true" tabindex="-1">分析宽表 CSV<span>用于统计分析</span></a><a id="exportWjx" href="#" aria-disabled="true" tabindex="-1">问卷星兼容 CSV<span>保留平台字段</span></a></div></details>
+      <button type="button" class="btn btn-soft btn-sm" id="reloadSurvey" aria-label="刷新当前问卷数据">{{ icon('refresh', 14) }} </button>
+      <a class="btn btn-soft btn-sm" id="openSchema" href="#" aria-disabled="true" tabindex="-1">{{ icon('settings', 14) }} </a>
+
     </div>
   </div>
   <div class="survey-data-stats" id="statCards" aria-label="当前问卷答卷统计">
-    <button type="button" data-response-stat="all"><span>答卷</span><strong id="statResponses">—</strong></button>
-    <button type="button" data-response-stat="valid"><span>有效</span><strong id="statValid">—</strong></button>
-    <button type="button" data-response-stat="flagged"><span>已标记</span><strong id="statFlagged">—</strong></button>
-    <span><span>评分者</span><strong id="statRaters">—</strong></span>
-    <span><span>素材</span><strong id="statStimuli">—</strong></span>
-    <span class="survey-data-updated" id="surveyDataStatus" role="status">正在读取问卷…</span>
+    <button type="button" data-response-stat="all"><span>总答卷数</span><strong id="statResponses">—</strong><small id="statValidNote">有效答卷 —</small></button>
+    <button type="button" data-response-stat="flagged"><span>异常 / 已标记</span><strong id="statFlagged">—</strong><small id="statFlagNote">等待数据</small></button>
+    <span><span>量表评分题</span><strong id="statRatings">—</strong><small id="statRatingNote">量表评分题目</small></span>
+    <span><span>覆盖诱发素材</span><strong id="statStimuli">—</strong><small id="statCoverageNote">等待数据</small></span>
+    <span hidden id="statValid"></span><span hidden id="statRaters"></span>
   </div>
   <div class="form-error" id="pageError" hidden></div>
 </section>
@@ -33,11 +36,11 @@
   <div class="tabs" id="dataTabs" role="tablist" aria-label="问卷数据视图">
     <button class="tab active" id="dataTab-overview" role="tab" aria-controls="tab-overview" aria-selected="true" type="button" data-tab="overview">概览与题目</button>
     <button class="tab" id="dataTab-responses" role="tab" aria-controls="tab-responses" aria-selected="false" tabindex="-1" type="button" data-tab="responses">答卷明细</button>
-    <button class="tab" id="dataTab-quality" role="tab" aria-controls="tab-quality" aria-selected="false" tabindex="-1" type="button" data-tab="quality">质量检查</button>
+    <button class="tab" id="dataTab-quality" role="tab" aria-controls="tab-quality" aria-selected="false" tabindex="-1" type="button" data-tab="quality">数据质控</button>
     <button class="tab" id="dataTab-imports" role="tab" aria-controls="tab-imports" aria-selected="false" tabindex="-1" type="button" data-tab="imports">导入批次</button>
     <button class="tab survey-import-tab" id="dataTab-import" role="tab" aria-controls="tab-import" aria-selected="false" tabindex="-1" type="button" data-tab="import">{{ icon('upload', 13) }} 导入 CSV</button>
   </div>
-  <section class="survey-data-panel" id="tab-overview" role="tabpanel" aria-labelledby="dataTab-overview"><div id="overviewBody" class="survey-data-scroll" tabindex="0"><div class="empty"><p>正在读取问卷…</p></div></div></section>
+  <section class="survey-data-panel" id="tab-overview" role="tabpanel" aria-labelledby="dataTab-overview"><div id="overviewBody"><div class="empty"><p>正在读取问卷…</p></div></div></section>
   <section class="survey-data-panel" id="tab-responses" role="tabpanel" aria-labelledby="dataTab-responses" hidden>
     <div class="survey-data-section-head"><h2>答卷明细 <small>查看原始作答与分析值</small></h2><span class="table-count" id="responseCount">—</span></div>
     <div class="response-toolbar"><div class="search-box">{{ icon('search', 14) }}<input id="responseSearch" type="search" placeholder="搜索评分者、素材、答卷编号…" aria-label="搜索答卷"></div><select id="responseValidFilter" class="select" aria-label="答卷状态"><option value="">全部状态</option><option value="valid">有效答卷</option><option value="flagged">已标记答卷</option></select><span class="hint" id="sessionFilterHint" hidden></span><button class="btn btn-soft btn-sm" type="button" id="clearResponseFilter" hidden>清除筛选</button></div>
@@ -61,4 +64,4 @@
 </section>
 <dialog id="responseDialog" class="survey-response-dialog" aria-label="答卷详情"><div id="responseDetail" class="response-detail" hidden></div></dialog>
 {% endblock %}
-{% block scripts %}<script>window.__IMPORT_BATCHES__ = {{ (imports|default([], true))|tojson }};</script><script src="{{ url_for('static', path='js/survey_data.js') }}?v=20261120-2"></script>{% endblock %}
+{% block scripts %}<script>window.__IMPORT_BATCHES__ = {{ (imports|default([], true))|tojson }};</script><script src="{{ url_for('static', path='js/survey_data.js') }}?v=20261125-5"></script>{% endblock %}

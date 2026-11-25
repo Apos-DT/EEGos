@@ -123,20 +123,32 @@
     const md=state.metadata;
     const fields={statResponses:md?.n_responses,statValid:md?.n_valid,statFlagged:md?.n_invalid,statRaters:md?.n_raters,statStimuli:md?.n_stimuli};
     Object.entries(fields).forEach(([id,value])=>{$(id).textContent=value??"—";});
+    $("statRatings").textContent=md ? (md.questions||[]).filter(q=>q.type==="rating").length : "—";
+    $("statValidNote").textContent=md ? `有效答卷 ${md.n_valid} 份 · 有效率 ${md.n_responses ? Math.round(md.n_valid/md.n_responses*100) : 0}%` : "等待数据";
+    $("statFlagNote").textContent=md ? (md.n_invalid ? "请在数据质控中核验" : "暂无已标记答卷") : "等待数据";
+    $("statCoverageNote").textContent=md ? `单素材平均 ${md.n_stimuli ? (md.n_valid/md.n_stimuli).toFixed(1) : "0"} 份有效标定` : "等待数据";
+    $("dataTab-responses").textContent=md ? `答卷明细 (${md.n_responses})` : "答卷明细";
     $("schemaVersionBadge").hidden=!md;
-    $("schemaVersionBadge").textContent=md ? `v${md.schema_version} · ${md.n_questions} 题` : "";
+    $("schemaVersionBadge").textContent=md ? `v${md.schema_version} · ${md.n_questions} 道题目 · ${md.n_stimuli} 个已覆盖素材` : "";
   }
 
   function renderQuestionStats() {
     if(!questionQuery)return;
     const result=questionQuery.update({query:$("questionSearch").value});
+    result.items=result.items.filter(q=>!$("questionType").value||q.type===$("questionType").value);
     const rows=result.items.map(q=>{
       let stat="—";
-      if(q.type==="rating")stat=q.mean==null ? "—" : `${q.mean}${q.sd==null ? "" : ` ± ${q.sd}`}`;
-      else if(q.distribution)stat=q.distribution.slice(0,3).map(([k,v])=>`${k}（${v}）`).join("、")+(q.distribution.length>3 ? "…" : "");
-      return [esc(q.title||q.id),esc(TYPE_LABELS[q.type]||q.type),fmt(q.answered),`${q.answer_rate??0}%`,fmt(stat)];
+      if(q.type==="rating")stat=q.mean==null ? "—" : `<div class="survey-rating"><strong>均值 ${esc(q.mean)}</strong><meter min="1" max="9" value="${Number(q.mean)}"></meter><small>1 — 9 分</small></div>`;
+      else if(q.distribution){
+        const total=q.distribution.reduce((sum,item)=>sum+Number(item[1]),0);
+        const colors=["#158068","#689e91","#a7c7be","#d0dfdb","#e4ece9"];
+        stat=`<div class="survey-distribution" title="${esc(q.distribution.map(([k,v])=>k+" "+v).join(" · "))}">${q.distribution.map(([k,v],i)=>`<span style="width:${total ? v/total*100 : 0}%;background:${colors[Math.min(i,4)]}"></span>`).join("")}</div><small>${q.distribution.slice(0,3).map(([k,v])=>esc(k)+" "+(total?Math.round(v/total*100):0)+"% ("+v+")").join(" · ")}</small>`;
+      } else stat=`已收集 ${Number(q.answered)||0} 条记录 <button class="btn btn-soft btn-sm" type="button" data-question-details>查看明细 →</button>`;
+      return [String((state.metadata.questions||[]).indexOf(q)+1),esc(q.title||q.id),esc(TYPE_LABELS[q.type]||q.type),`${q.answer_rate??0}%`,stat];
     });
-    $("questionStatsTable").innerHTML=table(["题目","题型","已作答","作答率","均值 ± 标准差 / 主要分布"],rows);
+    $("questionStatsTable").innerHTML=table(["序号","题目名称","题型","作答率","统计分布"],rows);
+    $("questionScroll").scrollTop=0;
+    $("questionStatsTable").querySelectorAll("[data-question-details]").forEach(button=>button.addEventListener("click",()=>switchTab("responses")));
     $("questionCount").textContent=`${result.total} 道题目`;
   }
 
@@ -146,11 +158,13 @@
     const trace=[["问卷编号",sv.id],["量表版本",`v${md.schema_version}`],["量表指纹",md.schema_hash],["历史版本",`${(md.schema_history||[]).length} 个`],["答卷来源",origins],["导入批次",Object.keys(md.by_batch||{}).length],["提交时间范围",`${dateLabel(md.first_submitted_at)} 至 ${dateLabel(md.last_submitted_at)}`]];
     $("overviewBody").innerHTML=`<div class="survey-overview-heading"><div><h2>${esc(sv.title||"问卷")}</h2>${sv.description ? `<p>${esc(sv.description)}</p>` : ""}</div>${badge(sv.status_label||"—",sv.status==="open" ? "green" : "gray")}</div>
       <div class="survey-overview-facts"><span>${esc(KIND_LABELS[md.kind]||md.kind)}</span><span>${md.n_questions} 道题目</span><span>${esc(md.origin?.type==="wjx_import" ? "问卷星导入" : "在线采集")}</span><span>最近提交 ${md.last_submitted_at ? esc(dateLabel(md.last_submitted_at)) : "暂无"}</span></div>
-      <div class="survey-question-head"><h3>题目统计 <small id="questionCount"></small></h3><input class="input" id="questionSearch" type="search" placeholder="搜索题目…" aria-label="搜索题目统计"></div>
-      <div id="questionStatsTable" class="survey-question-table"></div>
-      <details class="survey-tech-details"><summary>版本与数据溯源 <small>问卷编号、量表指纹和来源</small></summary><dl>${trace.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${fmt(v)}</dd>`).join("")}</dl></details>`;
+      <div class="survey-question-head"><h3>题目统计 <small id="questionCount"></small></h3><input class="input" id="questionSearch" type="search" placeholder="搜索题目…" aria-label="搜索题目统计"><select class="select" id="questionType" aria-label="筛选题型"><option value="">全部题型</option><option value="rating">量表评分</option><option value="single">单选</option><option value="multiple">多选</option><option value="text">填空</option><option value="textarea">多行文本</option></select></div>
+      <div id="questionScroll" class="survey-data-scroll survey-question-scroll" tabindex="0" role="region" aria-label="题目统计表与数据溯源">
+        <div id="questionStatsTable" class="survey-question-table"></div>
+        <details class="survey-tech-details"><summary>版本与数据溯源 <small>问卷编号、量表指纹和来源</small></summary><dl>${trace.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${fmt(v)}</dd>`).join("")}</dl></details>
+      </div>`;
     questionQuery=new EEG.ListController({items:md.questions||[],searchText:q=>[q.title,q.id,TYPE_LABELS[q.type],ROLE_LABELS[q.role]].join(" ")});
-    $("questionSearch").addEventListener("input",renderQuestionStats);renderQuestionStats();
+    $("questionSearch").addEventListener("input",renderQuestionStats);$("questionType").addEventListener("change",renderQuestionStats);renderQuestionStats();
   }
 
   // ------------------------------------------------------------------
