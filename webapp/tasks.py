@@ -35,7 +35,10 @@ def _run_cli(job: Job, args: list[str]) -> int:
     )
     assert process.stdout is not None
     output = Path(args[args.index("--out") + 1]) if "--out" in args else None
-    manager.bind_process(job, process.pid, output)
+    # Windows venv's launcher starts another Python process on which this Popen has no handle.
+    direct_python = os.name != "nt" or sys.prefix == sys.base_prefix
+    owned_child = process if direct_python and job.kind in {"train", "eeg", "features", "demo"} else None
+    manager.bind_process(job, process.pid, output, cancellable_process=owned_child)
     if job.kind == "train" and output:
         with (output / "training.log").open("w", encoding="utf-8", buffering=1) as log:
             for line in process.stdout:

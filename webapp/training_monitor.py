@@ -201,7 +201,7 @@ def _snapshot():
             if output:
                 group = groups.setdefault(str(output), {"output": output, "params": job.get("params", {}), "processes": []})
                 group.setdefault("job", job)
-            elif job.get("status") in ("queued", "running") and job.get("id") in live_ids:
+            elif job.get("status") in ("queued", "running", "cancelling") and job.get("id") in live_ids:
                 groups[job["id"]] = {"output": None, "params": job.get("params", {}), "processes": [], "job": job}
         tasks = []
         for group in groups.values():
@@ -211,11 +211,11 @@ def _snapshot():
             meta = _json(output / "run_meta.json") if output else {}
             params = {**group["params"], **job.get("params", {}), **meta.get("parameters", {})}
             status = job.get("status") or meta.get("status") or "unknown"
-            if not procs and status not in ("success", "failed") and meta.get("status") in ("success", "failed"):
+            if not procs and status not in ("success", "failed", "cancelled", "cancelling") and meta.get("status") in ("success", "failed"):
                 status = meta["status"]
             if not procs and not job and not meta.get("status") and group.get("observation"):
                 status = "success" if output and (output / "metrics.json").exists() else ("interrupted" if reliable else "unknown")
-            if procs: status = "running"
+            if procs and status not in ("cancelled", "cancelling"): status = "running"
             elif reliable and status in ("queued", "running"):
                 if job.get("id") not in live_ids:
                     status = "interrupted"
@@ -236,7 +236,7 @@ def _snapshot():
                 "progress": _progress(output, params, status) if output else {}, "logs": logs,
                 "error": job.get("error") or meta.get("error"),
                 "report_url": f"/api/experiments/{run_id}/report" if output and (output / "report.html").exists() else None})
-        active = [t for t in tasks if t["status"] in ("running", "queued", "unknown")]
+        active = [t for t in tasks if t["status"] in ("running", "queued", "unknown", "cancelling")]
         recent = sorted([t for t in tasks if t not in active], key=lambda t:t.get("finished_at") or t.get("started_at") or "", reverse=True)
         active.sort(key=lambda t:t.get("started_at") or "", reverse=True)
         _cache = {"sampled_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -252,7 +252,7 @@ def snapshot(all_tasks=False):
     data = copy.deepcopy(_snapshot())
     tasks = decorate_rows("jobs", data["tasks"], id_key="job_id", title_key="title")
     tasks = decorate_rows("training_tasks", tasks, title_key="title")
-    active = [task for task in tasks if task["status"] in {"running", "queued", "unknown"}]
+    active = [task for task in tasks if task["status"] in {"running", "queued", "unknown", "cancelling"}]
     recent = [task for task in tasks if task not in active]
     data["tasks"] = active + (recent if all_tasks else recent[:6])
     data["active_count"] = len(active)

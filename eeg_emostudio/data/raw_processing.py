@@ -203,26 +203,38 @@ def ica_process(cleaned, cfg, channels, out, source_hash):
     return {"mode":"review","components":int(ica.n_components_),"n_iter":int(ica.n_iter_),"converged":bool(ica.n_iter_<500),"excluded":[],"note":"已保存固定分解供审阅；本次不移除成分。查看成分波形并在应用模式引用此任务。不能只凭波形判定脑源/伪迹。"}
 
 
-def process_raw(root, out, cfg, log: Callable=print):
+class ProcessingCancelled(Exception):
+    pass
+
+
+def process_raw(root, out, cfg, log: Callable=print, *, cancel_file: Path | None = None):
     cfg.validate(); root=Path(root);out=Path(out);out.mkdir(parents=True,exist_ok=False)
+    def check_cancel():
+        if cancel_file is not None and cancel_file.is_file():
+            raise ProcessingCancelled
+
     started=now();clock=time.monotonic();records=[]; all_features=[];ys=[];subjects=[];sessions=[];trials=[];offsets=[];raw_windows=[];source_records=[];qc_channel=[];ica_info=None
     report={"status":"running","run_id":out.name,"started_at":started,"config":asdict(cfg),"dataset":"SEED-IV raw","fs_basis":"SEED-IV official distribution: 200 Hz; unit is a user-confirmed assumption (no unit field in MAT).","processing":{"filter":"4th-order Butterworth SOS, forward-backward zero phase, per original trial","notch_Q":30,"resampling":"scipy.signal.resample_poly anti-alias polyphase FIR","de":"0.5 * ln(2*pi*e*population_variance), uV input, band-filter before windowing","channel_flags":"flat std or robust log-std outliers; review only, no automatic interpolation"},"bands":BANDS,"class_names":CLASS_NAMES_ZH,"pipeline_sha256":sha256_file(Path(__file__)),"label_source":"SEED-IV ReadMe.txt session-specific labels; Channel Order.xlsx verified against CHANNELS","environment":{"python":platform.python_version(),"numpy":np.__version__,"scipy":scipy.__version__},"trials":records,"sources":source_records}
     save(out/"eeg_report.json",report)
     try:
         for session in cfg.sessions:
             for subject in cfg.subjects:
+                check_cancel()
                 path=raw_file(root,session,subject);variables=trial_variables(path)
                 log(f"[load] session={session} subject=S{subject:02d} file={path.name}",flush=True)
                 fingerprint=sha256_file(path);source_records.append({"path":str(path),"size_bytes":path.stat().st_size,"sha256":fingerprint})
                 mat=loadmat(path,variable_names=[v["name"] for v in variables]);cleaned=[];clean_starts=[]
                 for v in variables:
+                    check_cancel()
                     clean_starts.append(now())
                     data,channels=clean_trial(mat[v["name"]],cfg);cleaned.append(data)
                 if cfg.ica_mode!="off":
+                    check_cancel()
                     log(f"[ICA] {cfg.ica_mode}: fitting/reusing a recording-specific decomposition",flush=True)
                     ica_info=ica_process(cleaned,cfg,channels,out,fingerprint)
                     report["environment"]["mne"]=__import__('mne').__version__
                 for v,clean,started_trial in zip(variables,cleaned,clean_starts):
+                    check_cancel()
                     trial=v["trial"];label=SESSION_LABELS[session][trial-1]
                     before=np.asarray(mat[v["name"]],dtype=float)*(1e6 if cfg.unit=="V" else 1)
                     picks=[i for i,c in enumerate(CHANNELS) if c not in cfg.bad_channels]; before=before[picks]
@@ -240,6 +252,7 @@ def process_raw(root, out, cfg, log: Callable=print):
                     if len(records)==1: _figures(before,clean,cfg,channels,out)
                     save(out/"progress.json",{"done_trials":len(records),"total_trials":len(cfg.sessions)*len(cfg.subjects)*24,"at":now()})
                 del mat,cleaned
+        check_cancel()
         if not all_features: raise ValueError("没有窗口通过质量检查；请查看拒绝记录并复核单位、坏导和阈值，不会生成空训练集")
         meta={"source":"SEED-IV raw","sessions":list(cfg.sessions),"channels":channels,"window_seconds":cfg.window,"step_seconds":cfg.step,"n_trials":len(records),"config":asdict(cfg),"source_files":source_records,"units":"DE computed from microvolt signals, natural logarithm","note":"Recomputed DE without LDS smoothing; not equivalent to official de_LDS. Keep all windows from a trial/subject in one evaluation split."}
         write_feature_dataset(out/"features.npz",np.concatenate(all_features),np.asarray(ys),subjects,sessions=sessions,trial_ids=trials,class_names=CLASS_NAMES_ZH,feature_names=list(BANDS),metadata=meta)
@@ -249,6 +262,11 @@ def process_raw(root, out, cfg, log: Callable=print):
             writer=csv.DictWriter(f,fieldnames=list(qc_channel[0]));writer.writeheader();writer.writerows(qc_channel)
         report.update(status="success",n_subjects=len(set(subjects)),n_samples=len(ys),n_channels=len(channels),channels=channels,n_trials=len(records),n_rejected=sum(r["windows_rejected"] for r in records),n_windows_total=sum(r["windows_total"] for r in records),class_counts={CLASS_NAMES_ZH[i]:ys.count(i) for i in range(4)},flagged_channel_records=sum(r["flag"] for r in qc_channel),ica=ica_info)
         report["files"]=[p.name for p in out.iterdir() if p.is_file() and p.name not in ("eeg_report.json.tmp",)]+["report.html"]
+    except ProcessingCancelled:
+        report.update(status="cancelled",n_trials=len(records),n_samples=len(ys),
+                      n_rejected=sum(r["windows_rejected"] for r in records),
+                      files=[p.name for p in out.iterdir() if p.is_file()] + ["report.html"])
+        log("[cancelled] 已保留已处理试次的质量记录",flush=True)
     except Exception as exc:
         report.update(status="failed",error=f"{type(exc).__name__}: {exc}");raise
     finally:
@@ -264,4 +282,5 @@ def process_raw(root, out, cfg, log: Callable=print):
 if __name__=="__main__":
     parser=argparse.ArgumentParser();parser.add_argument("--request",required=True)
     args=parser.parse_args();request=json.loads(Path(args.request).read_text(encoding="utf-8"))
-    process_raw(request["root"],request["output"],RawConfig(**request["config"]))
+    cancel_file=Path(request["cancel_file"]) if request.get("cancel_file") else None
+    process_raw(request["root"],request["output"],RawConfig(**request["config"]),cancel_file=cancel_file)

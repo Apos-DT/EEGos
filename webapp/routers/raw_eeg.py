@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from eeg_emostudio.data.raw_processing import RawConfig, inspect_raw, raw_file
 from ..artifact_index import index_records
 from ..config import ROOT, SEED_IV_DIR, OUTPUT_DIR, invalidate
-from ..jobs import manager
+from ..jobs import JobCancelled, manager
 from ..common import job_payload
 from ..services import _id_for
 from ..record_store import managed
@@ -124,19 +124,22 @@ async def raw_report_page(run_id:str):
 def process_task(job,config):
     run_id=f"raw-{datetime.now():%Y%m%d-%H%M%S}-{job.id[-6:]}";output=OUTPUT_DIR/run_id
     request_file=OUTPUT_DIR/f"{run_id}.request.json"
-    request_file.write_text(json.dumps({"root":str(SEED_IV_DIR),"output":str(output),"config":config},ensure_ascii=False),encoding="utf-8")
+    cancel_file=OUTPUT_DIR/f"{run_id}.cancel"
+    request_file.write_text(json.dumps({"root":str(SEED_IV_DIR),"output":str(output),"config":config,"cancel_file":str(cancel_file)},ensure_ascii=False),encoding="utf-8")
     python=EEG_PYTHON if Path(EEG_PYTHON).is_file() else sys.executable
     args=[python,"-m","eeg_emostudio.data.raw_processing","--request",str(request_file)]
     env=os.environ.copy();env.update(PYTHONUNBUFFERED="1",PYTHONIOENCODING="utf-8",OMP_NUM_THREADS="2",MKL_NUM_THREADS="2",OPENBLAS_NUM_THREADS="2")
     manager.log(job,f"SEED-IV 原始数据处理 · {run_id}")
     process=subprocess.Popen(args,cwd=str(ROOT),env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding="utf-8",errors="replace",creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
-    manager.bind_process(job,process.pid,output)
+    manager.bind_process(job,process.pid,output,cancellable_process=process,request_cancel=cancel_file.touch)
     log_path=OUTPUT_DIR/f"{run_id}.log"
     with log_path.open("w",encoding="utf-8",buffering=1) as log:
         for line in process.stdout: log.write(line);manager.log(job,line)
     code=process.wait()
+    cancel_file.unlink(missing_ok=True)
     if code: raise RuntimeError(f"原始 EEG 处理失败（退出码 {code}），见任务日志和质量报告")
     report=json.loads((output/"eeg_report.json").read_text(encoding="utf-8"))
+    if report["status"] == "cancelled": raise JobCancelled("原始 EEG 处理已终止，部分质量记录已保存")
     invalidate("feature_datasets","raw_datasets")
     return {"kind":"raw_eeg","run_id":run_id,"report":report,"dataset_id":_id_for(output/"features.npz")}
 

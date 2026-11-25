@@ -10,13 +10,17 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from subprocess import SubprocessError
+from subprocess import Popen, SubprocessError
 from typing import Any, Callable
 
 from . import config, run_store
 
 MAX_LOG_LINES = 1200
 LOG_BATCH_SIZE = 8
+
+
+class JobCancelled(Exception):
+    """Raised by a worker after it has handled a cooperative cancellation request."""
 
 
 def _now() -> str:
@@ -48,6 +52,7 @@ class Job:
 class JobManager:
     def __init__(self, workers: int = 2) -> None:
         self._jobs: dict[str, Job] = {}
+        self._processes: dict[str, tuple[Popen, Callable[[], None] | None]] = {}
         self._pending_logs: dict[str, list[tuple[str, str]]] = {}
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="eeg-job")
@@ -73,6 +78,8 @@ class JobManager:
 
     def _run(self, job: Job, runner: Callable[[Job], dict[str, Any] | None]) -> None:
         with self._lock:
+            if job.status == "cancelled":
+                return
             job.status = "running"
             job.started_at = _now()
             self._save(job)
@@ -86,6 +93,10 @@ class JobManager:
                 self._save(job)
         except Exception as exc:  # noqa: BLE001 - job boundary must report any error
             with self._lock:
+                control = self._processes.get(job.id)
+                if isinstance(exc, JobCancelled) or (job.status == "cancelling" and control and control[1] is None):
+                    self._record_cancelled(job)
+                    return
                 job.status = "failed"
                 job.finished_at = _now()
                 job.error = f"{type(exc).__name__}: {exc}"
@@ -96,6 +107,7 @@ class JobManager:
         finally:
             with self._lock:
                 self._jobs.pop(job.id, None)
+                self._processes.pop(job.id, None)
                 self._pending_logs.pop(job.id, None)
 
     def log(self, job: Job, line: str) -> None:
@@ -116,10 +128,53 @@ class JobManager:
         logs.append((_now(), text))
         return logs
 
-    def bind_process(self, job: Job, pid: int, output: Path | None = None) -> None:
+    def bind_process(
+        self, job: Job, pid: int, output: Path | None = None, *, cancellable_process: Popen | None = None,
+        request_cancel: Callable[[], None] | None = None,
+    ) -> None:
         with self._lock:
             job.runtime = {"pid": pid, "output": str(output) if output else None}
+            if cancellable_process is not None and self._jobs.get(job.id) is job and cancellable_process.pid == pid:
+                self._processes[job.id] = (cancellable_process, request_cancel)
             self._save(job)
+
+    def active(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [
+                {**job.to_dict(include_logs=False), "can_cancel": self._can_cancel(job)}
+                for job in self._jobs.values() if job.status in {"queued", "running", "cancelling"}
+            ]
+
+    def _can_cancel(self, job: Job) -> bool:
+        control = self._processes.get(job.id)
+        return job.status == "queued" or (job.status == "running" and control is not None and control[0].poll() is None)
+
+    def cancel(self, job_id: str) -> str | None:
+        """Cancel queued work or invoke the control registered for an owned child."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or not self._can_cancel(job):
+                return None
+            if job.status == "queued":
+                self._record_cancelled(job)
+                self._jobs.pop(job.id, None)
+                self._pending_logs.pop(job.id, None)
+            else:
+                try:
+                    process, request_cancel = self._processes[job.id]
+                    (request_cancel or process.terminate)()
+                except OSError:
+                    return None
+                job.status = "cancelling"
+                self._queue_log(job, "[终止请求] 正在等待受管进程退出")
+                self._save(job)
+            return job.status
+
+    def _record_cancelled(self, job: Job) -> None:
+        job.status = "cancelled"
+        job.finished_at = _now()
+        self._queue_log(job, f"[已终止] {job.title} · {job.finished_at}")
+        self._save(job)
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
@@ -159,7 +214,7 @@ class JobManager:
     def recover(self, jobs: list[dict[str, Any]]) -> None:
         """Resolve stale status from old runs without treating an unavailable scan as failure."""
         active = self.live_ids()
-        stale = [job for job in jobs if job["id"] not in active and job["status"] in {"running", "queued"}]
+        stale = [job for job in jobs if job["id"] not in active and job["status"] in {"running", "queued", "cancelling"}]
         if not stale:
             return
         process_ids = None
@@ -179,7 +234,7 @@ class JobManager:
                     continue
                 if pid and pid in process_ids:
                     continue
-                status = "interrupted"
+                status = "cancelled" if job["status"] == "cancelling" else "interrupted"
             run_store.set_recovered_status(job["id"], status, finished_at)
             job["status"] = status
             if finished_at:
@@ -193,17 +248,23 @@ class JobManager:
 
 def _finished_run(job: dict[str, Any]) -> tuple[str | None, str | None]:
     output = job["runtime"].get("output")
-    if job["kind"] not in {"train", "external_reproduction"} or not output:
+    if not output:
+        return None, None
+    if job["kind"] == "eeg_raw":
+        allowed, filename = config.OUTPUT_DIR, "eeg_report.json"
+    elif job["kind"] in {"train", "external_reproduction"}:
+        allowed, filename = config.EXPERIMENTS_DIR, "run_meta.json"
+    else:
         return None, None
     try:
-        root = config.EXPERIMENTS_DIR.resolve()
+        root = allowed.resolve()
         path = (config.ROOT / output).resolve()
         if path == root or not path.is_relative_to(root):
             return None, None
-        meta = json.loads((path / "run_meta.json").read_text(encoding="utf-8"))
+        meta = json.loads((path / filename).read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return None, None
-    if isinstance(meta, dict) and meta.get("status") in {"success", "failed"}:
+    if isinstance(meta, dict) and meta.get("status") in {"success", "failed", "cancelled"}:
         return meta["status"], meta.get("finished_at")
     return None, None
 

@@ -55,7 +55,7 @@
       const data=await EEG.api("/api/eeg/raw/runs");const container=$("rawHistory");container.replaceChildren();
       const reference=$("rawICAReference"),value=reference.value;reference.replaceChildren(node("option","选择成功的 ICA 审阅任务…"));reference.firstChild.value="";
       for (const r of data.runs) {
-        const row=node("div",undefined,"raw-history-row"),description=node("div");row.dataset.recordResource="eeg_runs";row.dataset.recordId=r.run_id;description.append(node("strong",r.display_name||r.run_id),node("p",`${({success:"已完成",running:"处理中",failed:"失败"})[r.status]||r.status} · ${r.started_at||""} · ${r.n_samples??"—"} 窗口`,"hint"));
+        const row=node("div",undefined,"raw-history-row"),description=node("div");row.dataset.recordResource="eeg_runs";row.dataset.recordId=r.run_id;description.append(node("strong",r.display_name||r.run_id),node("p",`${EEG.statusText(r.status)} · ${r.started_at||""} · ${r.n_samples??"—"} 窗口`,"hint"));
         const button=node("button","查看结果","btn btn-soft btn-sm");button.type="button";button.addEventListener("click",async()=>{try{renderResult(await EEG.api(`/api/eeg/raw/runs/${r.run_id}`));}catch(e){error(e.message);}});row.append(description,button);container.append(row);
         if(r.status==="success"&&r.ica?.mode==="review") {const option=node("option",r.run_id);option.value=r.run_id;reference.append(option);}
       }
@@ -64,7 +64,7 @@
     }catch(e){$("rawHistory").textContent=e.message;}
   }
   function renderResult(r) {
-    $("rawResults").hidden=false;$("rawResultSummary").textContent=`${r.run_id} · ${r.status==="success"?"已完成":r.status} · ${r.elapsed_seconds||0} 秒 · ${r.finished_at||""}`;
+    $("rawResults").hidden=false;$("rawResultSummary").textContent=`${r.run_id} · ${EEG.statusText(r.status)} · ${r.elapsed_seconds||0} 秒 · ${r.finished_at||""}`;
     const metrics=[["有效窗口",r.n_samples??0],["剔除窗口",r.n_rejected??0],["原始 trial",r.n_trials??r.trials?.length??0],["输出通道",r.n_channels??"—"]];
     $("rawResultMetrics").replaceChildren(...metrics.map(([label,v])=>{const box=node("div");box.append(node("span",label),node("strong",v));return box;}));
     const base=`/files/eeg/${encodeURIComponent(r.run_id)}/`;
@@ -72,7 +72,7 @@
     $("rawWaveform").closest("figure").hidden=!r.files?.includes("waveform.png");$("rawSpectrum").closest("figure").hidden=!r.files?.includes("spectrum.png");
     const files=[["features.npz","DE 特征"],["features.manifest.json","数据版本清单"],["raw.npz","清洗窗口"],["channel_qc.csv","通道质量明细"],["eeg_report.json","完整质量报告"],["window_index.npz","窗口原始位置"],["review-ica.fif","固定 ICA 分解"]];
     $("rawArtifacts").replaceChildren(...files.filter(([name])=>r.files?.includes(name)||name==="eeg_report.json").map(([name,label])=>{const a=node("a",label,"btn btn-soft btn-sm");a.href=base+name;a.target="_blank";return a;}));
-    if(r.status==="success" || r.status==="failed") {const reportLink=node("a","处理报告","btn btn-soft btn-sm");reportLink.href=`/api/eeg/raw/runs/${encodeURIComponent(r.run_id)}/report`;reportLink.target="_blank";$("rawArtifacts").prepend(reportLink);}
+    if(["success", "failed", "cancelled"].includes(r.status)) {const reportLink=node("a","处理报告","btn btn-soft btn-sm");reportLink.href=`/api/eeg/raw/runs/${encodeURIComponent(r.run_id)}/report`;reportLink.target="_blank";$("rawArtifacts").prepend(reportLink);}
     $("rawGoTrain").hidden=!r.dataset_id;
     $("rawGoTrain").href=r.n_subjects>=2?`/training?dataset=${encodeURIComponent(r.dataset_id)}`:"/datasets?tab=eeg";
     $("rawGoTrain").textContent=r.n_subjects>=2?"使用特征训练":"查看特征数据集";
@@ -89,7 +89,7 @@
     running=true;sync();EEG.renderJob(job,"rawEEGConsole");
     EEG.pollJob(job.id,{consoleId:"rawEEGConsole",timeout:24*60*60*1000,
       onSuccess:done=>{running=false;sync();sessionStorage.removeItem("eegRawJob");const r=done.result.report;r.dataset_id=done.result.dataset_id;renderResult(r);history();},
-      onFail:failed=>{running=false;sync();sessionStorage.removeItem("eegRawJob");error(failed.error||"任务未完成，查看处理记录与日志。");history();}});
+      onFail:failed=>{running=false;sync();sessionStorage.removeItem("eegRawJob");error(failed.error||(failed.status==="cancelled"?"任务已终止，部分质量记录可在处理记录中查看。":"任务未完成，查看处理记录与日志。"));history();}});
   }
   $("seedRawForm").addEventListener("submit",async event=>{
     event.preventDefault();if(running)return;error("");

@@ -54,6 +54,9 @@
     return {
       queued: "排队中",
       running: "运行中",
+      cancelling: "终止中",
+      cancelled: "已终止",
+      interrupted: "已中断",
       success: "已完成",
       failed: "失败",
     }[status] || status;
@@ -95,10 +98,10 @@
         if (job.status === "success") {
           clearInterval(timer);
           if (onSuccess) onSuccess(job);
-        } else if (job.status === "failed") {
+        } else if (["failed", "cancelled", "interrupted"].includes(job.status)) {
           clearInterval(timer);
           if (onFail) onFail(job);
-          else EEG.toast(job.error || "任务失败", "error");
+          else EEG.toast(job.error || EEG.statusText(job.status), "error");
         }
       } catch (error) {
         clearInterval(timer);

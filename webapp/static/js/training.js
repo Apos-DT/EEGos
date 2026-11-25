@@ -194,6 +194,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    if (window.location.hash === "#backgroundTraining") setTrainingView("monitor");
     const tabs = Array.from(document.querySelectorAll(".training-pane-tabs [role='tab']"));
     tabs.forEach((tab, index) => {
       tab.addEventListener("click", () => setTrainingView(index === 0 ? "config" : "monitor"));

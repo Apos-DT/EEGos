@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 import numpy as np
 from scipy.io import savemat
 from eeg_emostudio.data.raw_processing import RawConfig, clean_trial, window_starts, trial_variables, process_raw
@@ -55,6 +56,34 @@ class RawProcessingTests(unittest.TestCase):
             self.assertTrue((output/"spectrum.png").exists())
             savemat(source/"bad.mat",{"de_LDS1":np.zeros((62,2,5))})
             with self.assertRaises(ValueError):trial_variables(source/"bad.mat")
+
+    def test_cancel_keeps_partial_quality_report_without_training_features(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "eeg_raw_data/1"
+            source.mkdir(parents=True)
+            rng = np.random.default_rng(9)
+            savemat(source / "1_test.mat", {
+                f"sample_eeg{trial}": rng.normal(size=(62, 800)) * 10 for trial in range(1, 25)
+            })
+            cancel_file = root / "cancel"
+
+            def log(message, **kwargs):
+                if message.startswith("[trial]"):
+                    cancel_file.touch()
+
+            cfg = RawConfig(notch=0, reref="none", edge=0, reject_uv=0, flat_uv=0, window=2, step=2)
+            output = root / "raw-cancelled"
+            with patch("eeg_emostudio.data.raw_processing._figures"):
+                process_raw(root, output, cfg, log, cancel_file=cancel_file)
+
+            report = json.loads((output / "eeg_report.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["status"], "cancelled")
+            self.assertEqual(report["n_trials"], len(report["trials"]))
+            self.assertEqual(report["n_trials"], 1)
+            self.assertTrue(report["finished_at"])
+            self.assertTrue((output / "report.html").exists())
+            self.assertFalse((output / "features.npz").exists())
 
 
 if __name__=="__main__":unittest.main()

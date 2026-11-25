@@ -3,11 +3,12 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from threading import Event
+from unittest.mock import Mock, patch
 
 from webapp import run_store
 from webapp.db import transaction
-from webapp.jobs import MAX_LOG_LINES, JobManager
+from webapp.jobs import MAX_LOG_LINES, JobCancelled, JobManager
 
 
 class RunDatabaseTests(unittest.TestCase):
@@ -69,3 +70,51 @@ class RunDatabaseTests(unittest.TestCase):
         self.addCleanup(restarted._executor.shutdown)
         self.assertEqual(restarted.get("orphan").status, "interrupted")
         self.assertEqual(run_store.read_job("orphan")["status"], "interrupted")
+
+    def test_queue_cancellation_persists_without_starting_runner(self):
+        pool = JobManager(workers=1)
+        self.addCleanup(pool._executor.shutdown)
+        release, started = Event(), Event()
+        self.addCleanup(release.set)
+
+        def block(job):
+            started.set()
+            release.wait(5)
+
+        pool.submit("train", "running", block)
+        self.assertTrue(started.wait(5))
+        rerun = Mock()
+        queued = pool.submit("train", "queued", rerun)
+        self.assertEqual(pool.cancel(queued.id), "cancelled")
+        release.set()
+        pool._executor.shutdown(wait=True)
+        rerun.assert_not_called()
+        saved = run_store.read_job(queued.id)
+        self.assertEqual(saved["status"], "cancelled")
+        self.assertTrue(saved["finished_at"])
+        self.assertTrue(saved["logs"][-1].startswith("[已终止]"))
+
+    def test_running_cancel_uses_only_the_bound_process_control(self):
+        pool = JobManager(workers=1)
+        self.addCleanup(pool._executor.shutdown)
+        bound, release = Event(), Event()
+        self.addCleanup(release.set)
+        child = Mock(pid=1)
+        child.poll.return_value = None
+
+        def runner(job):
+            pool.bind_process(job, child.pid, cancellable_process=child, request_cancel=release.set)
+            bound.set()
+            release.wait(5)
+            raise JobCancelled("cooperative cancellation completed")
+
+        job = pool.submit("eeg_raw", "raw worker", runner)
+        self.assertTrue(bound.wait(5))
+        self.assertTrue(pool.active()[0]["can_cancel"])
+        self.assertEqual(pool.cancel(job.id), "cancelling")
+        pool._executor.shutdown(wait=True)
+        performed = run_store.read_job(job.id)
+        self.assertEqual(performed["status"], "cancelled")
+        self.assertEqual(len(performed["logs"]), 2)
+        child.terminate.assert_not_called()
+        self.assertIsNone(pool.cancel(job.id))

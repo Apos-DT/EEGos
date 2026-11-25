@@ -1,7 +1,7 @@
 /* Read-only, refresh-safe local training monitor. */
 (function () {
   const $ = (id) => document.getElementById(id);
-  const labels = {running: "训练进程运行中", queued: "排队中", success: "已完成", failed: "失败", interrupted: "进程已退出 · 无完成记录", unknown: "状态待确认"};
+  const labels = {running: "训练进程运行中", queued: "排队中", cancelling: "终止中", cancelled: "已终止", success: "已完成", failed: "失败", interrupted: "进程已退出 · 无完成记录", unknown: "状态待确认"};
   let timer;
   let inFlight = false;
   const renderedTasks = new WeakMap();
@@ -123,8 +123,9 @@
       }
     } else gpu.append(node("p", data.gpu.message || "GPU 信息暂不可用", "hint"));
     const active = $("monitorTasks"), history = $("monitorHistory");
-    const activeTasks = data.tasks.filter(task => ["running", "queued", "unknown"].includes(task.status));
-    const historyTasks = data.tasks.filter(task => !["running", "queued", "unknown"].includes(task.status));
+    const activeStates = new Set(["running", "queued", "cancelling", "unknown"]);
+    const activeTasks = data.tasks.filter(task => activeStates.has(task.status));
+    const historyTasks = data.tasks.filter(task => !activeStates.has(task.status));
     renderTasks(active, activeTasks);
     renderTasks(history, historyTasks);
     if (!active.childElementCount) active.append(node("p", data.process_scan_ok ? "当前未发现本项目正在运行的训练进程。" : "无法确认当前是否存在训练进程。", "hint"));
