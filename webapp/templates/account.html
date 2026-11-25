@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ {'login':'登录','register':'注册','accounts':'账号审核'}[mode] }} · EmoStudio</title>
+  <link rel="stylesheet" href="/static/css/account.css">
+</head>
+<body class="account-page">
+<main class="account-card {{ 'account-card-wide' if mode == 'accounts' else '' }}">
+  <a class="account-brand" href="/">EmoStudio</a>
+  <h1>{{ {'login':'登录','register':'注册','accounts':'账号审核'}[mode] }}</h1>
+  {% if message %}<p class="account-note" role="status">{{ message }}</p>{% endif %}
+  {% if error %}<p class="account-error" role="alert">{{ error }}</p>{% endif %}
+  {% if mode == 'accounts' %}
+    {% for user in pending %}
+    <div class="account-row">
+      <div><strong>{{ user.username }}</strong><span>{{ user.email }}</span></div>
+      <form method="post" action="/accounts/{{ user.id }}/approve"><button class="account-submit">通过审核</button></form>
+    </div>
+    {% else %}<p class="account-note">暂无待审核账号。</p>{% endfor %}
+    <p class="account-links"><a href="/">返回工作台</a></p>
+  {% else %}
+  <form class="account-form" method="post" action="/{{ mode }}">
+    {% if mode == 'register' %}
+    <label>用户名<input name="username" autocomplete="username" minlength="3" maxlength="32" required></label>
+    <label>邮箱<input name="email" type="email" autocomplete="email" maxlength="254" required></label>
+    <label>密码（10–128 个字符）<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+    <label>确认密码<input name="confirmation" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+    {% else %}
+    <input name="next" type="hidden" value="{{ next_path }}">
+    <label>用户名或邮箱<input name="identity" autocomplete="username" maxlength="254" required></label>
+    <label>密码<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
+    {% endif %}
+    <button class="account-submit">{{ '提交注册' if mode == 'register' else '登录' }}</button>
+  </form>
+  <p class="account-links">{% if mode == 'register' %}<a href="/login">返回登录</a>{% else %}<a href="/register">注册账号</a>{% endif %}</p>
+  {% endif %}
+</main>
+</body>
+</html>

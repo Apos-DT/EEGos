@@ -1,151 +1,119 @@
 {% extends "base.html" %}
-{% from "macros.html" import icon, badge %}
-{% block title %}工作台 · {{ app_name }}{% endblock %}
+{% from "macros.html" import icon %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', path='css/dashboard.css') }}?v=overview-5">{% endblock %}
+{% block topbar_tools %}{% endblock %}
+{% block topbar_identity %}{% endblock %}
 
-{% block actions %}
-<a class="btn btn-soft" href="/media">{{ icon('sliders', 16) }} 素材库</a>
-<a class="btn btn-primary" href="/surveys/new">{{ icon('play', 16) }} 开始实验</a>
-{% endblock %}
+{% block actions %}{% endblock %}
+{% macro metric(value) %}{{ value|pct if value is number else '—' }}{% endmacro %}
 
 {% block content %}
-<section class="workspace-intro">
-  <div><span class="workspace-kicker">研究工作台</span><h2>从问卷采集到模型实验</h2><p>组织实验素材、管理 EEG 数据，在同一工作区跟进训练与研究记录。</p></div>
-  <div class="workspace-shortcuts"><a class="btn btn-primary" href="/surveys/new">{{ icon('play', 16) }} 新建问卷</a><a class="btn btn-soft" href="/training#backgroundTraining">{{ icon('activity', 16) }} 查看后台训练</a></div>
+<section class="overview-metrics" aria-label="科研资源概览">
+  <article class="overview-stat">
+    <div class="overview-stat-heading"><h2>实验采集</h2><a href="/surveys/new" class="overview-link">新建问卷 {{ icon("arrow", 13) }}</a></div>
+    <div class="overview-stat-value"><strong>{{ dashboard.surveys }}</strong><span>份问卷</span></div>
+    <p class="overview-stat-detail">{{ dashboard.valid_responses }} 份有效答卷</p>
+    <p class="overview-stat-note">视听诱发与主观量表收集</p>
+  </article>
+  <article class="overview-stat">
+    <h2>诱发素材库</h2>
+    <div class="overview-stat-value"><strong>{{ dashboard.media_total }}</strong><span>个素材</span></div>
+    <p class="overview-stat-detail">{{ dashboard.media_formal }} 个正式选材</p>
+    <p class="overview-stat-note">{% if dashboard.media_quadrants|length == 4 %}覆盖 HVHA / HVLA / LVHA / LVLA{% elif dashboard.media_quadrants %}已覆盖 {{ dashboard.media_quadrants|join(' / ') }}{% else %}视频与音频实验素材{% endif %}</p>
+  </article>
+  <article class="overview-stat">
+    <h2>数据集与 EEG 制备</h2>
+    <div class="overview-stat-value"><strong>{{ dashboard.dataset_count }}</strong><span>个数据集</span></div>
+    <p class="overview-stat-detail">{{ dashboard.eeg_dataset_count }} 含 EEG · {{ dashboard.other_dataset_count }} 音视频 / 文本</p>
+    <p class="overview-stat-note">SEED-IV · {{ dashboard.raw_files }} 份原始文件 · {{ dashboard.feature_sets }} 套特征集</p>
+  </article>
+  <article class="overview-stat">
+    <h2>模型训练记录</h2>
+    <div class="overview-stat-value"><strong>{{ dashboard.run_count }}</strong><span>次有效运行</span></div>
+    <p class="overview-stat-detail" title="{{ dashboard.best_accuracy_caveats|join('、') }}">最高 Acc <span class="overview-accuracy">{{ metric(dashboard.best_accuracy) }}</span>{% if dashboard.best_accuracy_caveats %}<span class="overview-record-note"> · 含部分折记录</span>{% endif %}</p>
+    <p class="overview-stat-note" title="含 {{ dashboard.report_demo_count }} 份合成演示报告">{{ dashboard.report_count }} 份评估报告 · 支持 LOSO 协议</p>
+  </article>
 </section>
-
-<div class="domain-grid">
-  <a class="domain-card" href="/surveys" style="--domain:#0c7368;--domain-soft:#e9fbf7">
-    <div class="domain-head"><span class="domain-icon">{{ icon('play', 18) }}</span><span class="domain-kicker">EXPERIMENT</span></div>
-    <h3>实验</h3>
-    <p>视频/刺激播放、实验前状态、主观评分；按四象限轮转，避免相邻同类。</p>
-    <div class="domain-foot"><span><strong>{{ data.stats.sessions }}</strong> 会话 · <strong>{{ data.stats.responses }}</strong> 条评分</span><span>{{ icon('arrow', 14) }}</span></div>
-  </a>
-  <a class="domain-card" href="/eeg" style="--domain:#2f6fed;--domain-soft:#eaf0ff">
-    <div class="domain-head"><span class="domain-icon">{{ icon('waves', 18) }}</span><span class="domain-kicker">EEG SIGNAL</span></div>
-    <h3>EEG 信号</h3>
-    <p>EEGLAB 连续数据 → 滤波/重参考/ICA → 事件分段 → 5 频带 DE。</p>
-    <div class="domain-foot"><span><strong>{{ data.eeg.files }}</strong> 原始文件 · <strong>{{ data.stats.datasets }}</strong> 特征集</span><span>{{ icon('arrow', 14) }}</span></div>
-  </a>
-  <a class="domain-card" href="/training" style="--domain:#6941c6;--domain-soft:#f4f0ff">
-    <div class="domain-head"><span class="domain-icon">{{ icon('cpu', 18) }}</span><span class="domain-kicker">MODEL</span></div>
-    <h3>模型训练</h3>
-    <p>固定划分、LOSO 防泄漏；真实运行与合成验收严格分开。</p>
-    <div class="domain-foot"><span><strong>{{ data.stats.experiments }}</strong> 次运行 · <strong>{{ data.best_experiment.accuracy|pct if data.best_experiment else '—' }}</strong> 最佳</span><span>{{ icon('arrow', 14) }}</span></div>
-  </a>
-</div>
-
-<div class="stats-grid">
-  <article class="stat-card" style="--tint:#e9fbf7;--tone:#0c7368">
-    <div class="stat-top"><span>实验会话</span><span class="stat-icon">{{ icon('play', 16) }}</span></div>
-    <div class="stat-value">{{ data.stats.sessions }}<small>个</small></div>
-    <div class="stat-foot"><span class="up">{{ data.stats.participants }} 名被试</span><span>·</span><span>{{ data.stats.responses }} 条评分</span></div>
-  </article>
-  <article class="stat-card" style="--tint:#eaf0ff;--tone:#2f6fed">
-    <div class="stat-top"><span>实验问卷</span><span class="stat-icon">{{ icon('chart', 16) }}</span></div>
-    <div class="stat-value">{{ data.stats.responses }}<small>条</small></div>
-    <div class="stat-foot"><span class="up">{{ data.experiment.completion_rate }}% 完成率</span><span>·</span><span>{{ data.stats.participants }} 名被试</span></div>
-  </article>
-  <article class="stat-card" style="--tint:#fff6e8;--tone:#b45309">
-    <div class="stat-top"><span>原始 EEG</span><span class="stat-icon">{{ icon('waves', 16) }}</span></div>
-    <div class="stat-value">{{ data.eeg.files }}<small>个</small></div>
-    <div class="stat-foot"><span class="up">{{ data.stats.datasets }} 个特征集</span><span>·</span><span>SEED-IV + 上传</span></div>
-  </article>
-  <article class="stat-card" style="--tint:#f4f0ff;--tone:#6941c6">
-    <div class="stat-top"><span>模型运行</span><span class="stat-icon">{{ icon('activity', 16) }}</span></div>
-    <div class="stat-value">{{ data.stats.experiments }}<small>次</small></div>
-    <div class="stat-foot"><span class="up">{{ data.experiments[0].folds if data.experiments else 0 }} 折 LOSO</span><span>·</span><span>实验记录可追溯</span></div>
-  </article>
-</div>
-
-<div class="layout-2">
-  <div class="stack">
-    <section class="panel">
-      <div class="panel-head">
-        <div><h2 class="panel-title">最近问卷会话</h2><p class="panel-sub">被试、进度与状态；点击可查看该轮逐题答卷</p></div>
-        <a class="panel-link" href="/survey-data">全部问卷数据 {{ icon('arrow', 13) }}</a>
+<div class="overview-main">
+  <div class="overview-left">
+  <section class="overview-panel overview-evaluation" aria-labelledby="evaluationTitle">
+    <header class="overview-panel-head">
+      <h2 id="evaluationTitle">跨被试模型评估概览</h2>
+      <a href="/experiments" class="overview-link">全部实验 {{ icon('arrow', 14) }}</a>
+    </header>
+    <div class="overview-legend" aria-label="指标图例">
+      <span><i class="overview-dot accuracy"></i>Accuracy</span>
+      <span><i class="overview-dot f1"></i>Macro-F1</span>
+    </div>
+    <div class="overview-chart" role="region" aria-label="最近代表性 LOSO 实验结果" tabindex="0">
+      {% if dashboard.runs %}
+      <div class="overview-chart-axis" aria-hidden="true"><div></div><div class="overview-axis-ticks"><span>0%</span><span>50%</span><span>100%</span></div><div></div></div>
+      <div class="overview-chart-rows">
+        {% for run in dashboard.runs %}
+        <div class="overview-chart-row" title="{{ run.details }}">
+          <div class="overview-model">
+            {% if run.report_url %}<a href="{{ run.report_url }}" target="_blank" rel="noopener noreferrer">{{ run.model_label }}</a>{% else %}<strong>{{ run.model_label }}</strong>{% endif %}
+            <p>{{ run.subtitle }}</p>
+          </div>
+          <div class="overview-plot" aria-hidden="true">
+            {% if run.accuracy is number and run.macro_f1 is number %}<span class="overview-connector" style="--start:{{ ([run.accuracy, run.macro_f1]|min)|pct(4) }};--width:{{ ((run.accuracy - run.macro_f1)|abs)|pct(4) }}"></span>{% endif %}
+            {% if run.accuracy is number %}<i class="overview-point accuracy" style="--position:{{ run.accuracy|pct(4) }}"></i>{% endif %}
+            {% if run.macro_f1 is number %}<i class="overview-point f1" style="--position:{{ run.macro_f1|pct(4) }}"></i>{% endif %}
+          </div>
+          <div class="overview-scores">
+            <span class="overview-accuracy" aria-label="Accuracy {{ metric(run.accuracy) }}">{{ metric(run.accuracy) }}</span>
+            <span class="overview-f1" aria-label="Macro-F1 {{ metric(run.macro_f1) }}">{{ metric(run.macro_f1) }}</span>
+          </div>
+        </div>
+        {% endfor %}
       </div>
-      {% if data.experiment.latest_sessions %}
-      <div class="table-wrap">
-        <table class="data">
-          <thead><tr><th>被试</th><th>问卷 / 会话</th><th>进度</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
-          <tbody>
-          {% for session in data.experiment.latest_sessions[:6] %}
-            <tr>
-              <td class="strong">{{ session.participant_code }}</td>
-              <td class="mono">{% if session.survey_title %}<div class="muted">{{ session.survey_title }}</div>{% endif %}{{ session.id }}</td>
-              <td>{{ session.answered }} / {{ session.total }}</td>
-              <td><span class="badge {% if session.status == 'completed' %}badge-green{% elif session.status == 'running' %}badge-amber{% else %}badge-gray{% endif %}">{{ '已完成' if session.status == 'completed' else ('进行中' if session.status == 'running' else '已结束') }}</span></td>
-              <td class="muted">{{ session.created_at[:16].replace('T', ' ') }}</td>
-              <td>
-                {% if session.survey_id %}
-                <a class="panel-link" href="/survey-data?survey_id={{ session.survey_id }}&session_id={{ session.id }}&tab=responses">查看答卷 {{ icon('arrow', 12) }}</a>
-                {% else %}
-                <span class="muted">旧版会话</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="empty" style="padding:22px"><div class="empty-icon">{{ icon('play', 22) }}</div><p>还没有问卷会话。新建一份问卷并分享链接给被试。</p><a class="btn btn-primary btn-sm" href="/surveys/new">新建问卷</a></div>
-      {% endif %}
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <div><h2 class="panel-title">最近训练</h2><p class="panel-sub">真实运行与合成验收分开标记</p></div>
-        <a class="panel-link" href="/experiments">全部实验 {{ icon('arrow', 13) }}</a>
-      </div>
-      {% if data.recent_experiments %}
-      <div class="table-wrap">
-        <table class="data">
-          <thead><tr><th>运行</th><th>设置</th><th class="num">Accuracy</th><th class="num">Macro-F1</th><th></th></tr></thead>
-          <tbody>
-          {% for run in data.recent_experiments[:5] %}
-            <tr>
-              <td class="strong"><span class="run-dot {{ 'demo' if run.is_demo else '' }}"></span>{{ run.label }}</td>
-              <td><span class="badge badge-neutral">{{ run.setting_label }}</span> <span class="muted">{{ run.model }}</span></td>
-              <td class="num strong">{{ run.accuracy|pct }}</td>
-              <td class="num">{{ run.macro_f1|pct }}</td>
-              <td class="right">{% if run.report_url %}<a class="mini-link" href="{{ run.report_url }}" target="_blank">报告 {{ icon('external', 12) }}</a>{% endif %}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="empty" style="padding:22px"><div class="empty-icon">{{ icon('activity', 22) }}</div><p>还没有训练记录。先用 trial 级 SEED-IV 跑 MLP 基线。</p><a class="btn btn-soft btn-sm" href="/training">去训练</a></div>
-      {% endif %}
-    </section>
+      {% else %}<p class="overview-empty">暂无可展示的跨被试实验结果。</p>{% endif %}
+    </div>
+    {% if dashboard.runs %}<p class="overview-evaluation-note">{{ dashboard.comparison_note }}</p>{% endif %}
+  </section>
+  <section class="overview-panel overview-preparation" aria-labelledby="preparationTitle">
+    <header class="overview-panel-head"><h2 id="preparationTitle">EEG 数据制备</h2><a class="overview-link" href="/datasets?tab=eeg">查看特征 {{ icon('arrow', 14) }}</a></header>
+    <div class="overview-preparation-steps">
+      <a href="/eeg"><strong>{{ dashboard.raw_files }}</strong><span>原始 MAT 文件</span><small>SEED-IV · 滤波与质量检查</small></a>
+      <span class="overview-step-arrow" aria-hidden="true">→</span>
+      <a href="/datasets?tab=eeg"><strong>{{ dashboard.feature_sets }}</strong><span>已制备特征集</span><small>查看特征与处理参数</small></a>
+      <span class="overview-step-arrow" aria-hidden="true">→</span>
+      <a href="/training"><strong>LOSO</strong><span>跨被试训练</span><small>配置模型与评估协议</small></a>
+    </div>
+  </section>
   </div>
-
-  <div class="stack">
-    <section class="panel">
-      <div class="panel-head"><div><h2 class="panel-title">日常流程</h2><p class="panel-sub">只保留实际使用的 5 步</p></div><span class="badge badge-teal">LOCAL</span></div>
-      <div class="panel-body">
-        <div class="pipeline">
-          {% for step in data.pipeline %}
-          <div class="pipe-step {{ step.status }}">
-            <span class="pipe-node">{% if step.status == 'done' %}{{ icon('check', 13) }}{% else %}{{ loop.index }}{% endif %}</span>
-            <div><div class="pipe-label">{{ step.label }}</div><div class="pipe-detail">{{ step.detail }}</div></div>
-            <span class="pipe-state">{{ '完成' if step.status == 'done' else '待运行' }}</span>
+  <section class="overview-panel overview-resources" aria-labelledby="resourcesTitle">
+    <header class="overview-panel-head"><h2 id="resourcesTitle">数据资源与实验动态</h2></header>
+    <div class="overview-resource-body" role="region" aria-label="数据集与近期问卷" tabindex="0">
+      <section aria-labelledby="datasetsTitle">
+        <h3 id="datasetsTitle">多模态数据集接入状态</h3>
+        <div class="overview-datasets">
+          {% for dataset in dashboard.datasets %}
+          <div class="overview-dataset-row">
+            <a href="/datasets" class="overview-dataset-name">{{ dataset.name }}</a>
+            <span class="overview-dataset-modalities {{ 'overview-accuracy' if dataset.has_eeg else '' }}" {% if dataset.has_eeg %}title="EEG 核心数据集"{% endif %}>{{ dataset.modalities|join(' / ') }}</span>
+            <span class="overview-dataset-status">{{ dataset.status }}</span>
           </div>
           {% endfor %}
         </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head"><div><h2 class="panel-title">快速入口</h2><p class="panel-sub">日常只用这四个动作</p></div></div>
-      <div class="quick-list">
-        <a class="quick-row" href="/surveys/new"><span class="quick-icon">{{ icon('play', 17) }}</span><span><strong>新建问卷</strong><small>选素材、生成分享链接</small></span>{{ icon('arrow', 14) }}</a>
-        <a class="quick-row" href="/media"><span class="quick-icon">{{ icon('sliders', 17) }}</span><span><strong>刺激库</strong><small>80 条正式材料，预览/筛选</small></span>{{ icon('arrow', 14) }}</a>
-        <a class="quick-row" href="/eeg"><span class="quick-icon">{{ icon('waves', 17) }}</span><span><strong>EEG 清洗</strong><small>EEGLAB → 分段 → DE</small></span>{{ icon('arrow', 14) }}</a>
-        <a class="quick-row" href="/training"><span class="quick-icon">{{ icon('cpu', 17) }}</span><span><strong>模型训练</strong><small>LOSO / 对比 / 报告</small></span>{{ icon('arrow', 14) }}</a>
-      </div>
-    </section>
-  </div>
+      </section>
+      <section class="overview-recent" aria-labelledby="recentTitle">
+        <h3 id="recentTitle">最近问卷会话</h3>
+        {% for survey in dashboard.recent_surveys %}
+        <div class="overview-survey-row">
+          <div class="overview-survey-title">
+            <a href="/survey-data?survey_id={{ survey.id|urlencode }}&amp;tab=responses">{{ survey.title }}</a>
+            <time datetime="{{ survey.updated_at }}">{{ survey.updated_at[:10] }}</time>
+          </div>
+          <span>{{ survey.n_responses }} 份答卷</span>
+          <span class="overview-survey-status">{{ '收集中' if survey.status == 'open' else ('已归档' if survey.status == 'archived' else '已关闭') }}</span>
+        </div>
+        {% else %}<p class="overview-empty">暂无问卷记录。</p>{% endfor %}
+      </section>
+    </div>
+  </section>
 </div>
+{% endblock %}
+{% block footer %}
+<footer class="overview-footer">EmoStudio · 实验采集 · EEG 信号处理 · 多模态基准与模型训练</footer>
 {% endblock %}

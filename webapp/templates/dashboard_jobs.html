@@ -1,0 +1,20 @@
+{% from 'macros.html' import icon %}
+<section class="panel mer-panel mer-queue" aria-labelledby="merQueueTitle">
+  <header class="mer-panel-head mer-queue-head">
+    <h2 id="merQueueTitle">{{ icon('activity', 16) }} 后台处理与训练队列</h2>
+    <span class="mer-queue-summary" id="merQueueSummary"></span>
+  </header>
+  <div class="mer-panel-scroll mer-queue-body" id="merQueueList" role="region" aria-label="活动任务" tabindex="0">
+    <p class="mer-queue-message">正在读取后台任务…</p>
+  </div>
+  <dialog class="record-dialog mer-job-dialog" id="merJobDialog" aria-labelledby="merJobTitle">
+    <header class="record-dialog-head mer-job-dialog-head">
+      <div>
+        <h2 id="merJobTitle">任务日志</h2>
+        <p id="merJobStatus" class="mer-queue-message"></p>
+      </div>
+      <form method="dialog"><button class="btn btn-soft btn-sm" aria-label="关闭任务日志">关闭</button></form>
+    </header>
+    <pre id="merJobLogs" tabindex="0" aria-label="日志输出"></pre>
+  </dialog>
+</section>

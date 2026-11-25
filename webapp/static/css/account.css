@@ -1,0 +1,31 @@
+.account-page {
+  margin: 0;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: #f6f8f9;
+  color: #0e292d;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+.account-card { box-sizing: border-box; width: min(100%, 410px); padding: 28px; background: white; border: 1px solid #e5eaeb; border-radius: 12px; }
+.account-card-wide { width: min(100%, 600px); }
+.account-brand { font-size: 18px; font-weight: 700; }
+.account-page a { color: #126750; }
+.account-card h1 { font-size: 25px; margin: 16px 0; }
+.account-form, .account-form label { display: grid; gap: 7px; }
+.account-form { gap: 15px; }
+.account-form input { box-sizing: border-box; width: 100%; border: 1px solid #cbd8d8; border-radius: 7px; padding: 9px 11px; font: inherit; }
+.account-submit { background: #158068; color: white; border: 0; padding: 10px 13px; border-radius: 7px; cursor: pointer; font: inherit; }
+.account-submit:hover { background: #116752; }
+.account-note { color: #486167; }
+.account-error { color: #982718; }
+.account-links { margin: 18px 0 0; }
+.account-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e5eaeb; overflow-wrap: anywhere; }
+.account-row span { display: block; color: #486167; }
+.account-menu { position: relative; }
+.account-menu summary { list-style: none; cursor: pointer; max-width: 110px; overflow: hidden; }
+.account-menu-items { position: absolute; right: 0; top: calc(100% + 6px); background: white; border: 1px solid #e5eaeb; border-radius: 8px; padding: 4px; min-width: 110px; z-index: 50; }
+.account-menu-items a, .account-menu-items button { display: block; text-align: left; padding: 7px 10px; width: 100%; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.account-menu-items a:hover, .account-menu-items button:hover { background: #eef6f3; }

@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+from auth_client import WorkspaceClient
 
 from webapp import record_store, survey_db
 from webapp.db import transaction
@@ -269,7 +269,7 @@ class RepositoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "不接受新答卷"):
             surveys.start_response(survey["token"], "P01")
 
-        client = TestClient(app, raise_server_exceptions=False)
+        client = WorkspaceClient(app, raise_server_exceptions=False)
         self.assertEqual(client.get(f"/q/{survey['token']}").status_code, 404)
         self.assertEqual(client.get(f"/api/public/surveys/{survey['token']}").status_code, 404)
         page = client.get("/surveys").text
@@ -291,7 +291,7 @@ class RepositoryTests(unittest.TestCase):
         record = survey_meta.build_response_record(survey, {"q2": "3"}, strict=False)
         self.assertEqual(record["normalized"]["q2"], "3.mp3")
 
-        client = TestClient(app, raise_server_exceptions=False)
+        client = WorkspaceClient(app, raise_server_exceptions=False)
         self.assertEqual(
             client.put(f"/api/surveys/{survey_id}", json={
                 "title": "切回视频版", "schema": questionnaire.default_schema("video"), "kind": "video",
@@ -326,7 +326,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(record["normalized"]["q2"], "1.mp4")
         self.assertIn("1、", survey_meta.export_wjx_csv("QLEGACY"))
 
-        client = TestClient(app, raise_server_exceptions=False)
+        client = WorkspaceClient(app, raise_server_exceptions=False)
         self.assertEqual(client.get("/api/surveys/QLEGACY/responses.csv").status_code, 200)
         self.assertEqual(client.get("/api/surveys/QLEGACY/metadata").status_code, 200)
 
@@ -368,7 +368,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(answer_path.read_text(encoding="utf-8"), valid_line)
 
     def test_web_endpoints(self):
-        client = TestClient(app)
+        client = WorkspaceClient(app)
         self.assertEqual(client.get("/survey-data").status_code, 200)
         templates = client.get("/api/questionnaire/templates").json()
         self.assertEqual(len(templates["templates"]["video"]), 12)
@@ -491,7 +491,7 @@ class RepositoryTests(unittest.TestCase):
         token, session_id = self._open_survey_with_session(survey_id, ["1.mp4"])
         submitted = surveys.submit_schema_answers(token, session_id, self._answers("P01", "1.mp4"))
         response_id = submitted["response_id"]
-        client = TestClient(app, raise_server_exceptions=False)
+        client = WorkspaceClient(app, raise_server_exceptions=False)
 
         detail = client.get(f"/api/surveys/{survey_id}/responses/{response_id}")
         self.assertEqual(detail.status_code, 200, detail.text)

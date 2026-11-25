@@ -14,12 +14,14 @@ import logging
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+from . import accounts
 from .common import BASE_DIR
 from .config import ACCESS_TOKEN
 from .content import APP_NAME, APP_VERSION
@@ -28,55 +30,39 @@ from .record_store import StoreError
 
 logger = logging.getLogger(__name__)
 
-# 被试端与健康检查永远公开；管理端在设置了 EEG_WEB_TOKEN 时要求令牌。
-PUBLIC_PREFIXES = ("/static/", "/q/", "/api/public/", "/api/health")
-PUBLIC_PATHS = {"/api/swagger", "/openapi.json", "/docs/oauth2-redirect"}
-
-_UNAUTHORIZED_PAGE = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<title>需要访问令牌</title><style>
-body{{font:14px/1.7 system-ui,sans-serif;margin:0;display:grid;place-items:center;height:100vh;color:#2c2c2a;background:#f7f7f5}}
-main{{max-width:520px;padding:28px;border:1px solid #e3e3df;border-radius:12px;background:#fff}}
-code{{background:#f1efe8;padding:2px 6px;border-radius:4px}}
-</style></head><body><main>
-<h2 style="margin:0 0 10px;font-size:16px">需要访问令牌</h2>
-<p style="margin:0;color:#5f5e5a">管理端已启用访问保护。请在链接后追加
-<code>?token=你的令牌</code> 访问一次，之后浏览器会记住（有效期 7 天）。</p>
-</main></body></html>"""
+PUBLIC_PREFIXES = ("/static/", "/q/", "/api/public/")
+PUBLIC_PATHS = {"/login", "/register", "/api/health"}
 
 
 async def _access_guard(request: Request, call_next):
-    """可选的管理端访问保护。
-
-    默认不启用（``EEG_WEB_TOKEN`` 为空），因为服务默认只监听 127.0.0.1。
-    一旦把服务暴露到局域网给被试扫码，就必须设置令牌，否则任何能访问
-    8770 端口的人都能看到并导出全部问卷与答卷。
-    """
-
     path = request.url.path
-    if not ACCESS_TOKEN:
-        return await call_next(request)
-    if path in PUBLIC_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_PREFIXES):
+    if path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
         return await call_next(request)
 
-    supplied = (
-        request.headers.get("x-access-token", "")
-        or request.query_params.get("token", "")
-        or request.cookies.get("eeg_token", "")
-    )
-    if not (supplied and secrets.compare_digest(supplied, ACCESS_TOKEN)):
-        if path.startswith("/api/"):
-            return JSONResponse(
-                {"detail": "需要访问令牌：请带 X-Access-Token 请求头或 ?token= 参数"},
-                status_code=401,
-            )
-        return HTMLResponse(_UNAUTHORIZED_PAGE, status_code=401)
+    origin = request.headers.get("origin")
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and (
+        request.headers.get("sec-fetch-site") == "cross-site"
+        or (origin and origin != f"{request.url.scheme}://{request.url.netloc}")
+    ):
+        return JSONResponse({"detail": "请从当前站点提交请求。"}, status_code=403)
+
+    user = await run_in_threadpool(accounts.session_user, request.cookies.get(accounts.COOKIE))
+    request.state.user = user
+    supplied = (request.headers.get("x-access-token") or request.query_params.get("token")
+                or request.cookies.get("eeg_token") or "")
+    token_access = bool(ACCESS_TOKEN and secrets.compare_digest(supplied.encode(), ACCESS_TOKEN.encode()))
+    if not user and not token_access:
+        if path.startswith("/api/") and path != "/api/swagger":
+            return JSONResponse({"detail": "请先登录 EmoStudio。"}, status_code=401)
+        return RedirectResponse("/login?" + urlencode({"next": request.url.path + (
+            "?" + request.url.query if request.url.query and "token" not in request.query_params else ""
+        )}), status_code=303, headers={"Cache-Control": "no-store"})
 
     response = await call_next(request)
-    # 从链接带 token 进入后写入 Cookie，后续点击导航不必重复拼参数
-    if request.query_params.get("token"):
-        response.set_cookie(
-            "eeg_token", ACCESS_TOKEN, httponly=True, samesite="lax", max_age=7 * 24 * 3600
-        )
+    response.headers["Cache-Control"] = "no-store"
+    if token_access and request.query_params.get("token"):
+        response.set_cookie("eeg_token", ACCESS_TOKEN, httponly=True, samesite="lax",
+                            secure=request.url.scheme == "https", max_age=accounts.SESSION_SECONDS)
     return response
 
 
@@ -109,8 +95,6 @@ def create_app() -> FastAPI:
 
     for router in ALL_ROUTERS:
         app.include_router(router)
-    # 常驻注册：未设令牌时守卫直接放行。这样令牌逻辑可被测试覆盖，
-    # 也不必为「开/关令牌」重建应用。
     app.middleware("http")(_access_guard)
     return app
 

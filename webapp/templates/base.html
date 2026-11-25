@@ -9,6 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230d3b4f'/%3E%3Cpath d='M10 34h8l4-12 7 24 5-18 4 6h16' fill='none' stroke='%235eead4' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}?v=sidebar-brand-1">
   <link rel="stylesheet" href="{{ url_for('static', path='css/ui.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/account.css') }}">
   {% block styles %}{% endblock %}
 </head>
 <body data-page="{{ page }}">
@@ -55,6 +56,7 @@
           <span class="crumb-sep">/</span>
           <span class="crumb-current">{{ page_title }}</span>
         </div>
+        {% block topbar_context %}{% endblock %}
       </div>
       <div class="topbar-right">
         <div class="api-pill" id="apiPill" title="本地 FastAPI 服务">
@@ -62,8 +64,17 @@
           <span>API 在线</span>
         </div>
         <span class="topbar-date">{{ now.strftime('%Y-%m-%d') }}</span>
-        <a class="icon-btn" href="/api/swagger" target="_blank" rel="noreferrer" title="打开 API 文档">{{ icon('external', 18) }}</a>
-        <div class="avatar" title="本地研究者">EEG</div>
+        {% block topbar_tools %}<a class="icon-btn" href="/api/swagger" target="_blank" rel="noreferrer" title="打开 API 文档">{{ icon('external', 18) }}</a>{% endblock %}
+        {% block topbar_identity %}{% endblock %}
+        {% if request.state.user %}
+        <details class="account-menu">
+          <summary class="btn btn-soft btn-sm" aria-label="账号菜单">{{ request.state.user.username }}</summary>
+          <div class="account-menu-items">
+            {% if request.state.user.role == 'admin' %}<a href="/accounts">账号审核</a>{% endif %}
+            <form action="/logout" method="post"><button type="submit">退出登录</button></form>
+          </div>
+        </details>
+        {% else %}<a class="btn btn-soft btn-sm" href="/login">账号登录</a>{% endif %}
       </div>
     </header>
 

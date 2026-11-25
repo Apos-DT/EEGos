@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+from auth_client import WorkspaceClient
 from fastapi.testclient import TestClient
 
 from webapp import record_resources as resources, record_store as store, services
@@ -26,7 +27,7 @@ class RecordManagementTests(unittest.TestCase):
         mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.dict(os.environ, {"EEG_DB_PATH": str(self.root / "app.sqlite3")})
         mocked.start(); self.addCleanup(mocked.stop)
-        self.client = TestClient(app)
+        self.client = WorkspaceClient(app)
         self.rows = [{"id": "sample/一", "name": "原始名称", "accuracy": .51, "survey_id": "test-survey"},
                      {"id": "sample-two", "name": "另一个名称", "accuracy": .6, "survey_id": "test-survey"}]
         self.source = self.root / "source.json"
@@ -84,8 +85,9 @@ class RecordManagementTests(unittest.TestCase):
 
     def test_management_api_uses_existing_access_guard(self):
         with patch("webapp.main.ACCESS_TOKEN", "record-test-token"):
-            self.assertEqual(self.client.get("/api/records/media").status_code, 401)
-            self.assertEqual(self.client.get("/api/records/media", headers={"x-access-token":"record-test-token"}).status_code, 200)
+            client = TestClient(app)
+            self.assertEqual(client.get("/api/records/media").status_code, 401)
+            self.assertEqual(client.get("/api/records/media", headers={"x-access-token":"record-test-token"}).status_code, 200)
 
     def test_missing_records_and_unknown_resources_cannot_be_written(self):
         response = self.client.patch("/api/records/media/item", json={"id": "../../outside", "revision": 0})

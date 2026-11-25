@@ -116,16 +116,16 @@ class AccessTokenTest(unittest.TestCase):
     def tearDown(self):
         self.main.ACCESS_TOKEN = self._original
 
-    def test_no_token_configured_keeps_everything_open(self):
+    def test_no_token_configured_requires_account_login(self):
         self.main.ACCESS_TOKEN = ""
-        self.assertEqual(TestClient(self.main.app).get("/").status_code, 200)
+        self.assertEqual(TestClient(self.main.app).get("/", follow_redirects=False).status_code, 303)
 
     def test_admin_pages_and_apis_require_token(self):
         self.main.ACCESS_TOKEN = "secret"
         client = TestClient(self.main.app)
-        self.assertEqual(client.get("/").status_code, 401)
+        self.assertEqual(client.get("/", follow_redirects=False).status_code, 303)
         self.assertEqual(client.get("/api/overview").status_code, 401)
-        self.assertEqual(client.get("/?token=wrong").status_code, 401)
+        self.assertEqual(client.get("/?token=wrong", follow_redirects=False).status_code, 303)
 
     def test_public_survey_and_health_stay_open(self):
         self.main.ACCESS_TOKEN = "secret"

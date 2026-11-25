@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
-from fastapi.testclient import TestClient
+from auth_client import WorkspaceClient
 
 from webapp.main import app
 
@@ -13,7 +13,7 @@ from webapp.main import app
 class WebTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.client = TestClient(app)
+        cls.client = WorkspaceClient(app)
 
     def test_pages_render(self):
         for path in ["/", "/surveys", "/survey-data", "/surveys/new", "/media", "/eeg", "/audit", "/selection", "/datasets", "/training", "/experiments", "/documents", "/system"]:

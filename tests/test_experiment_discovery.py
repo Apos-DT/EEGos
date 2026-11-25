@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+from auth_client import WorkspaceClient
 
 from webapp import services
 from webapp.config import invalidate
@@ -28,7 +28,7 @@ class ExperimentDiscoveryTests(unittest.TestCase):
             self.addCleanup(mocked.stop)
         invalidate("experiments")
         self.addCleanup(invalidate, "experiments")
-        self.client = TestClient(app)
+        self.client = WorkspaceClient(app)
 
     def write_metrics(self, run, accuracy):
         (run / "metrics.json").write_text(json.dumps({

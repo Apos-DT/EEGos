@@ -4,6 +4,7 @@
 上千行里找。现在按「谁改谁」归并：
 
 - :mod:`.core`           工作台首页、系统状态、任务查询
+- :mod:`.dashboard_queue` 工作台实时任务、日志与受管任务终止
 - :mod:`.survey`         问卷管理、答卷数据与元数据、历史导入
 - :mod:`.public_survey`  被试端填答与作答回看（无需登录）
 - :mod:`.experiment`     旧版现场会话存储（兼容层，只读为主）
@@ -19,11 +20,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import core, datasets, dda, experiment, files, media, prep, public_survey, raw_eeg, records, survey
+from . import account, core, dashboard_queue, datasets, dda, experiment, files, media, prep, public_survey, raw_eeg, records, survey
 
 # 顺序有意义：先注册的优先匹配。同一前缀下「字面量」路由必须早于「参数化」路由。
 ALL_ROUTERS: list[APIRouter] = [
+    account.router,
     core.router,
+    dashboard_queue.router,
     survey.router,
     public_survey.router,
     experiment.router,

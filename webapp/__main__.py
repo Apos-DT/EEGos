@@ -40,8 +40,7 @@ def main() -> None:
     if ACCESS_TOKEN:
         print("  管理端令牌: 已启用（打开页面时加 ?token=... 一次即可）")
     else:
-        print("  管理端令牌: 未启用 —— 同网段任何人可查看并导出全部答卷")
-        print("             正式采集请先设置 EEG_WEB_TOKEN=自定义字符串")
+        print("  管理端访问: 请登录账号，首次注册请从本机访问")
     print("=" * 62)
 
     uvicorn.run(
