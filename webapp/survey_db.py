@@ -166,6 +166,31 @@ def list_responses(survey_id: str, session_id: str | None = None) -> list[dict]:
         """, (survey_id, session_id))
 
 
+def query_responses(survey_id, page=1, page_size=20, query="", validity="", session_id=""):
+    clauses = ["r.survey_id=?", _ACTIVE_RESPONSE]
+    args = [survey_id]
+    if query:
+        clauses.append("instr(lower(r.payload_json || coalesce(m.title,'') || coalesce(m.notes,'')), lower(?)) > 0")
+        args.append(query)
+    if validity:
+        clauses.append("r.valid=?")
+        args.append(int(validity == "valid"))
+    if session_id:
+        clauses.append("r.session_id=?")
+        args.append(session_id)
+    source = "survey_responses r LEFT JOIN record_metadata m ON m.resource='responses' AND m.record_id=r.response_id"
+    where = " AND ".join(clauses)
+    with transaction() as conn:
+        total = conn.execute(f"SELECT count(*) FROM {source} WHERE {where}", args).fetchone()[0]
+        all_total = conn.execute(f"SELECT count(*) FROM survey_responses r WHERE r.survey_id=? AND {_ACTIVE_RESPONSE}", (survey_id,)).fetchone()[0]
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        rows = _payloads(conn, f"SELECT r.payload_json FROM {source} WHERE {where} ORDER BY r.submitted_at DESC,r.response_id DESC LIMIT ? OFFSET ?",
+                         tuple(args + [page_size, (page-1)*page_size]))
+    return {"total": total, "all_total": all_total, "page": page, "pages": pages,
+            "page_size": page_size, "responses": rows}
+
+
 def recent_responses(survey_id: str, limit: int) -> tuple[int, list[dict]]:
     where = f"r.survey_id=? AND {_ACTIVE_RESPONSE}"
     with transaction() as conn:

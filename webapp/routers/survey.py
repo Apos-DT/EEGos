@@ -174,9 +174,17 @@ async def api_survey_quality(survey_id: str) -> dict[str, Any]:
 
 
 @router.get("/api/surveys/{survey_id}/responses")
-async def api_survey_responses(survey_id: str, limit: int = Query(200, ge=1, le=5000)) -> dict[str, Any]:
+async def api_survey_responses(survey_id: str, limit: int = Query(200, ge=1, le=5000),
+    page: int | None = Query(None, ge=1), page_size: int = Query(20, ge=1, le=100),
+    q: str = Query("", max_length=200), validity: str = Query("", pattern="^(|valid|invalid)$"),
+    session_id: str = Query("", max_length=128)) -> dict[str, Any]:
     await get_survey(survey_id)
-    return await run_in_threadpool(survey_meta.response_table, survey_id, limit)
+    if page is None:
+        return await run_in_threadpool(survey_meta.response_table, survey_id, limit)
+    from .. import survey_db, record_store
+    result = await run_in_threadpool(survey_db.query_responses, survey_id, page, page_size, q, validity, session_id)
+    result["responses"] = record_store.decorate_rows("responses", result["responses"], "response_id", "display_name")
+    return result
 
 
 @router.get("/api/surveys/{survey_id}/responses.csv")

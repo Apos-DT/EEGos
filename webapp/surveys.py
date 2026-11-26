@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 import secrets
 import uuid
 from datetime import datetime
@@ -419,6 +420,7 @@ def submit_schema_answers(
     answers: dict[str, Any],
     client_ip: str = "",
     watch_seconds: int = 0,
+    *, expected_index: int | None = None, schema_hash: str | None = None,
 ) -> dict[str, Any]:
     """自定义量表通道：按问卷 schema 校验并写入统一答卷仓库。
 
@@ -430,6 +432,19 @@ def submit_schema_answers(
     if survey.get("status") != "open":
         raise ValueError("问卷已关闭")
     session = validate_public_session(token, session_id)
+    if expected_index is not None:
+        with transaction() as conn:
+            saved = conn.execute("SELECT payload_json FROM survey_responses WHERE session_id=? AND submit_index=?",
+                                 (session_id, expected_index)).fetchone()
+        if saved:
+            record = json.loads(saved[0])
+            if record.get("request_answers") != answers or record.get("schema_hash") != schema_hash:
+                raise ValueError("该步骤已提交不同答案，请刷新会话")
+            return {"session": public_session(session), "response_id": record["response_id"]}
+        if expected_index != int(session.get("current_index", 0)):
+            raise ValueError("会话进度已更新，请刷新后继续")
+        if schema_hash != survey.get("schema_hash"):
+            raise ValueError("问卷题目已更新，请重新加载")
     if session.get("status") != "running":
         raise ValueError("实验已结束")
     index = int(session.get("current_index", 0))
@@ -453,6 +468,7 @@ def submit_schema_answers(
     )
     survey_meta.set_client_ip_meta(record, client_ip)
     record["submitted_at"] = _now()
+    record["request_answers"] = answers
     with transaction(write=True) as conn:
         current_survey = load_survey(survey["id"], conn=conn)
         if current_survey.get("status") != "open":
@@ -461,6 +477,12 @@ def submit_schema_answers(
             raise ValueError("问卷题目已更新，请重新加载后提交")
         session = load_session(session_id, conn=conn)
         if int(session["current_index"]) != index:
+            saved = conn.execute("SELECT payload_json FROM survey_responses WHERE session_id=? AND submit_index=?",
+                                 (session_id, index)).fetchone()
+            if saved and expected_index is not None:
+                previous = json.loads(saved[0])
+                if previous.get("request_answers") == answers and previous.get("schema_hash") == schema_hash:
+                    return {"session": public_session(session), "response_id": previous["response_id"]}
             raise ValueError("会话进度已更新，请刷新后继续")
         advance_session_record(session)
         survey_db.save_responses(conn, survey["id"], [record], submit_index=index)

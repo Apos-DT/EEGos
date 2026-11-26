@@ -62,7 +62,10 @@
     if (schemaForm) {
       schemaForm.reset();
       schemaForm.querySelectorAll("input[data-rating]").forEach((input) => {
-        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dataset.answered = "";
+        const label = schemaForm.querySelector(`[data-rating-value="${input.dataset.rating}"]`);
+        if (label) label.textContent = "未选择";
+        schemaForm.querySelectorAll(`.rating-scale[data-scale="${input.dataset.rating}"] button`).forEach(b => b.classList.remove("active"));
       });
     }
     question.hidden = true;
@@ -218,7 +221,7 @@
       const buttons = Array.from({ length: high - low + 1 }, (_, k) =>
         `<button type="button" data-value="${low + k}">${low + k}</button>`).join("");
       body = `<div class="rating-block">
-        <div class="rating-label"><span>${escHtml(q.min_label || "最低")}</span><strong data-rating-value="${id}">${mid}</strong><span>${escHtml(q.max_label || "最高")}</span></div>
+        <div class="rating-label"><span>${escHtml(q.min_label || "最低")}</span><strong data-rating-value="${id}">未选择</strong><span>${escHtml(q.max_label || "最高")}</span></div>
         <input type="range" name="${id}" min="${low}" max="${high}" step="1" value="${mid}" data-rating="${id}" aria-label="${escHtml(q.title)}">
         <div class="rating-scale" data-scale="${id}" role="group">${buttons}</div>
       </div>`;
@@ -258,6 +261,7 @@
     schemaForm.addEventListener("input", (event) => {
       const input = event.target.closest("input[data-rating]");
       if (!input) return;
+      input.dataset.answered = "yes";
       const id = input.dataset.rating;
       const valueNode = schemaForm.querySelector(`[data-rating-value="${id}"]`);
       if (valueNode) valueNode.textContent = input.value;
@@ -271,17 +275,21 @@
       if (!state.session) return;
       setError("schemaResponseError", "");
       const button = $("schemaSubmit");
+      const missing = visible.find(q => q.type === "rating" && q.required !== false &&
+        !schemaForm.querySelector(`input[data-rating="${q.id}"]`)?.dataset.answered);
+      if (missing) { setError("schemaResponseError", `请确认评分：${missing.title}`); return; }
       button.disabled = true;
       const data = new FormData(schemaForm);
       const answers = {};
       visible.forEach((q) => {
-        const all = data.getAll(q.id);
+        const rating = schemaForm.querySelector(`input[data-rating="${q.id}"]`);
+        const all = q.type === "rating" && !rating?.dataset.answered ? [] : data.getAll(q.id);
         answers[q.id] = q.type === "multiple" ? all : (all[0] ?? "");
       });
       try {
         const payload = await api(`/api/public/surveys/${encodeURIComponent(token)}/sessions/${encodeURIComponent(state.session.id)}/answers`, {
           method: "POST",
-          body: JSON.stringify({ answers, watch_seconds: state.watchSeconds }),
+          body: JSON.stringify({ answers, watch_seconds: state.watchSeconds, expected_index: state.session.current_index, schema_hash: window.__SURVEY_SCHEMA_HASH__ }),
         });
         renderSession(payload.session);
         EEG.toast("问卷已保存", "success");

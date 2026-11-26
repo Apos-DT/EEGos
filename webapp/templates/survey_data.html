@@ -3,7 +3,7 @@
 {% set page_title = '问卷数据' %}
 {% set page_description = '查看主观情绪量表分布、核验答卷质量并导出分析数据。' %}
 {% block title %}问卷数据 · {{ app_name }}{% endblock %}
-{% block styles %}<link rel="stylesheet" href="{{ url_for('static', path='css/survey_data.css') }}?v=20261125-5">{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', path='css/survey_data.css') }}?v=20261126-charts">{% endblock %}
 {% block actions %}{% endblock %}
 {% block footer %}<footer class="survey-data-footer">EmoStudio · 实验采集 · EEG 信号处理 · 模型训练</footer>{% endblock %}
 {% block content %}
@@ -64,4 +64,4 @@
 </section>
 <dialog id="responseDialog" class="survey-response-dialog" aria-label="答卷详情"><div id="responseDetail" class="response-detail" hidden></div></dialog>
 {% endblock %}
-{% block scripts %}<script>window.__IMPORT_BATCHES__ = {{ (imports|default([], true))|tojson }};</script><script src="{{ url_for('static', path='js/survey_data.js') }}?v=20261125-5"></script>{% endblock %}
+{% block scripts %}<script>window.__IMPORT_BATCHES__ = {{ (imports|default([], true))|tojson }};</script><script src="{{ url_for('static', path='js/survey_data.js') }}?v=20261126-charts"></script>{% endblock %}

@@ -128,7 +128,7 @@
 </div>
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 <script src="{{ url_for('static', path='js/app.js') }}"></script>
-<script>window.__SURVEY_TOKEN__ = {{ token|tojson }}; window.__SURVEY_SCHEMA__ = {{ (schema|default([], true))|tojson }};</script>
+<script>window.__SURVEY_SCHEMA_HASH__ = {{ survey.schema_hash|default("")|tojson }}; window.__SURVEY_TOKEN__ = {{ token|tojson }}; window.__SURVEY_SCHEMA__ = {{ (schema|default([], true))|tojson }};</script>
 <script src="{{ url_for('static', path='js/public_survey.js') }}"></script>
 </body>
 </html>

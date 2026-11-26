@@ -275,7 +275,10 @@ def _clean_values(rows: list[dict[str, str]], column: str) -> list[str]:
 def _parse_scale(value: Any, low: int, high: int) -> float | None:
     """沿用 audit 的 1–9 文字锚点解析，再按题目自定义范围校验。"""
 
-    number = parse_rating(value)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = parse_rating(value)
     if number is None:
         return None
     return number if low <= number <= high else None

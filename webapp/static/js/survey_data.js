@@ -19,7 +19,7 @@
     sessionFilter: params.get("session_id") || "",
     detailRecord: null,
     detailId: "",
-    responsePage: 1, responsePages: 1, loadTicket: 0, detailTicket: 0, tab: "overview",
+    responseTicket: 0, responsePage: 1, responsePages: 1, loadTicket: 0, detailTicket: 0, tab: "overview",
   };
   const TABS = ["overview", "responses", "quality", "imports", "import"];
   const KIND_LABELS = {video:"视频问卷", audio:"音乐问卷", mixed:"音视频问卷", custom:"自定义问卷"};
@@ -63,8 +63,20 @@
   function switchTab(key) {
     if(!TABS.includes(key))key="overview";
     state.tab=key;
+    if (key === "responses" && state.surveyId) renderResponses();
+    if (key === "quality" && state.surveyId) loadQuality();
     document.querySelectorAll("#dataTabs .tab").forEach(b=>{const selected=b.dataset.tab===key;b.classList.toggle("active",selected);b.setAttribute("aria-selected",String(selected));b.tabIndex=selected ? 0 : -1;});
     TABS.forEach(name=>{$("tab-"+name).hidden=name!==key;});
+  }
+  async function loadQuality() {
+    const survey = state.surveyId, ticket = state.loadTicket;
+    try {
+      const data = await EEG.api(`/api/surveys/${encodeURIComponent(survey)}/quality`);
+      if (survey !== state.surveyId || ticket !== state.loadTicket) return;
+      state.quality = data.quality; renderQuality();
+    } catch (error) {
+      if (survey === state.surveyId && ticket === state.loadTicket) $("qualityBody").textContent=error.message;
+    }
   }
   function setUrl(updates, removals = []) {
     const url = new URL(window.location.href);
@@ -101,11 +113,13 @@
     const base=`/api/surveys/${encodeURIComponent(id)}`;
     $("exportWjx").href=`${base}/responses.csv`;$("exportClean").href=`${base}/responses.clean.csv`;$("openSchema").href=`/surveys/${encodeURIComponent(id)}/edit`;
     try {
-      const [md,qr,rp,im]=await Promise.all([EEG.api(`${base}/metadata`),EEG.api(`${base}/quality`),EEG.api(`${base}/responses?limit=5000`),EEG.api("/api/surveys/imports")]);
+      const md = await EEG.api(`${base}/metadata`);
       if(ticket!==state.loadTicket)return;
-      state.metadata=md.metadata;state.quality=qr.quality;state.responses=rp.responses||[];
-      state.responseTotal=rp.total??state.responses.length;state.batches=im.imports||[];
-      renderStats();renderOverview();renderResponses();renderQuality();renderImports();setDataActions(true);applyDeepLink();
+      state.metadata=md.metadata;state.quality=null;state.responses=[];
+      state.responseTotal=md.metadata.n_all_versions ?? md.metadata.n_responses;
+      renderStats();renderOverview();renderImports();setDataActions(true);applyDeepLink();
+      if (state.tab === "quality") loadQuality();
+      if (state.tab === "responses") renderResponses();
       $("surveyDataStatus").textContent=`更新于 ${new Date().toLocaleTimeString("zh-CN",{hour12:false,hour:"2-digit",minute:"2-digit"})}`;
     } catch(error) {
       if(ticket!==state.loadTicket)return;
@@ -124,7 +138,7 @@
     const fields={statResponses:md?.n_responses,statValid:md?.n_valid,statFlagged:md?.n_invalid,statRaters:md?.n_raters,statStimuli:md?.n_stimuli};
     Object.entries(fields).forEach(([id,value])=>{$(id).textContent=value??"—";});
     $("statRatings").textContent=md ? (md.questions||[]).filter(q=>q.type==="rating").length : "—";
-    $("statValidNote").textContent=md ? `有效答卷 ${md.n_valid} 份 · 有效率 ${md.n_responses ? Math.round(md.n_valid/md.n_responses*100) : 0}%` : "等待数据";
+    $("statValidNote").textContent=md ? `当前 v${md.schema_version} · 有效答卷 ${md.n_valid} 份 · 有效率 ${md.n_responses ? Math.round(md.n_valid/md.n_responses*100) : 0}%` : "等待数据";
     $("statFlagNote").textContent=md ? (md.n_invalid ? "请在数据质控中核验" : "暂无已标记答卷") : "等待数据";
     $("statCoverageNote").textContent=md ? `单素材平均 ${md.n_stimuli ? (md.n_valid/md.n_stimuli).toFixed(1) : "0"} 份有效标定` : "等待数据";
     $("dataTab-responses").textContent=md ? `答卷明细 (${md.n_responses})` : "答卷明细";
@@ -138,7 +152,7 @@
     result.items=result.items.filter(q=>!$("questionType").value||q.type===$("questionType").value);
     const rows=result.items.map(q=>{
       let stat="—";
-      if(q.type==="rating")stat=q.mean==null ? "—" : `<div class="survey-rating"><strong>均值 ${esc(q.mean)}</strong><meter min="1" max="9" value="${Number(q.mean)}"></meter><small>1 — 9 分</small></div>`;
+      if(q.type==="rating")stat=q.mean==null ? "—" : `<div class="survey-rating"><strong>均值 ${esc(q.mean)}</strong><meter min="${Number(q.min ?? 1)}" max="${Number(q.max ?? 9)}" value="${Number(q.mean)}"></meter><small>${Number(q.min ?? 1)} — ${Number(q.max ?? 9)} 分</small></div>`;
       else if(q.distribution){
         const total=q.distribution.reduce((sum,item)=>sum+Number(item[1]),0);
         const colors=["#158068","#689e91","#a7c7be","#d0dfdb","#e4ece9"];
@@ -171,26 +185,41 @@
   // 答卷明细：筛选 + 逐题详情
   // ------------------------------------------------------------------
   function filteredResponses() {
-    if(!responseQuery)responseQuery=new EEG.ListController({searchText:r=>[r.rater,r.stimulus_id,r.response_id,r.session_id,r.batch_id,r.source,r.display_name].join(" "),matches:(r,f)=>(!f.session||r.session_id===f.session)&&(!f.validity||(f.validity==="valid" ? r.valid : !r.valid))});
-    responseQuery.items=state.responses;
-    return responseQuery.update({query:$("responseSearch").value,filters:{validity:$("responseValidFilter").value,session:state.sessionFilter},page:state.responsePage,pageSize:Number($("responsePageSize").value)});
+    return state.responseResult;
   }
 
-  function renderResponses(resetPage=true) {
+  async function renderResponses(resetPage=true) {
+    if (!state.surveyId) return;
     if(resetPage)state.responsePage=1;
-    const result=filteredResponses();state.responsePage=result.page;state.responsePages=result.pages;
+    const ticket = ++state.responseTicket;
+    const survey = state.surveyId;
+    const pageSize = Number($("responsePageSize").value);
+    const params = new URLSearchParams({page: state.responsePage, page_size: pageSize,
+      q: $("responseSearch").value, validity: $("responseValidFilter").value, session_id: state.sessionFilter});
+    try {
+      const data = await EEG.api(`/api/surveys/${encodeURIComponent(survey)}/responses?${params}`);
+      if(ticket !== state.responseTicket || survey !== state.surveyId) return;
+      state.responses = data.responses;
+      state.responseTotal = data.all_total;
+      const result = {items: data.responses, total: data.total, page: data.page, pages: data.pages,
+        start: (data.page-1)*pageSize};
+      state.responsePage = result.page; state.responsePages = result.pages;
     const rows=result.items.map(r=>[fmt(dateLabel(r.submitted_at)),fmt(r.rater||r.participant_code||"匿名"),fmt(r.stimulus_id||r.stimulus_raw),r.valid ? badge("有效","green") : badge("已标记","amber"),fmt((r.flags||[]).join("；")||"—"),`<div class="survey-response-actions"><button class="btn btn-soft btn-sm view-response" type="button" data-id="${esc(r.response_id)}">查看答卷</button><button class="btn btn-soft btn-sm manage-response" type="button" data-id="${esc(r.response_id)}">管理</button></div>`]);
     $("responsesBody").innerHTML=rows.length ? table(["提交时间","评分者","素材","状态","标记","操作"],rows) : `<div class="empty"><h3>${state.responseTotal ? "没有匹配的答卷" : "暂无答卷"}</h3><p>${state.responseTotal ? "调整搜索或筛选条件后重试。" : "选择问卷后可查看已收集或导入的答卷。"}</p>${state.responseTotal ? '<button type="button" class="btn btn-soft btn-sm" data-clear-responses>重置筛选</button>' : ""}</div>`;
     $("responseCount").textContent=`${result.total} / ${state.responseTotal} 份`;
     $("responsePageInfo").textContent=`${result.total ? result.start+1 : 0}–${Math.min(result.start+result.items.length,result.total)} / ${result.total} 份 · ${result.page} / ${result.pages} 页`;
     $("responsePrev").disabled=result.page<=1;$("responseNext").disabled=result.page>=result.pages;
     $("responsePagination").hidden=!result.total;
-    $("responseLoadNote").hidden=state.responseTotal<=state.responses.length;
+    $("responseLoadNote").hidden=true;
     $("responseLoadNote").textContent=`当前载入 ${state.responses.length} / ${state.responseTotal} 份；筛选针对已载入答卷，完整数据请导出 CSV。`;
     $("sessionFilterHint").hidden=!state.sessionFilter;$("clearResponseFilter").hidden=!state.sessionFilter;
     $("sessionFilterHint").textContent=state.sessionFilter ? `会话 ${state.sessionFilter}` : "";
     $("responsesBody").scrollTop=0;
+    } catch (error) {
+      if(ticket === state.responseTicket) $("responsesBody").textContent = error.message;
+    }
   }
+
   $("responsesBody")?.addEventListener("click",event=>{const b=event.target.closest(".manage-response");if(b)EEG.records.edit("responses",b.dataset.id);});
 
   function answerRows(record, schema) {
@@ -279,12 +308,61 @@
     renderResponses();
   }
 
+  function qualityCharts(quality) {
+    const map = quality.affect_map;
+    const points = map?.points || [];
+    const coverage = [...(quality.stimulus_coverage || [])].sort((a, b) => a.n_raters - b.n_raters);
+    const maximum = coverage.reduce((max, row) => Math.max(max, row.n_raters), 1);
+    function position(value, axis) {
+      return axis.max > axis.min ? (value - axis.min) / (axis.max - axis.min) * 100 : 50;
+    }
+    const plot = points.length ? `
+      <label class="quality-chart-select">定位素材 <select class="select" id="affectStimulus">
+        ${points.map((point, index) => `<option value="${index}">${esc(point.stimulus_id)}</option>`).join("")}
+      </select></label>
+      <div class="quality-affect-axis">唤醒度 ${map.arousal.min}–${map.arousal.max}</div>
+      <div class="quality-affect-plot" aria-hidden="true">
+        ${points.map((point, index) => `<span class="quality-affect-point" data-point="${index}"
+          style="left:${position(point.valence, map.valence)}%;bottom:${position(point.arousal, map.arousal)}%"
+          title="${esc(point.stimulus_id)}"></span>`).join("")}
+      </div>
+      <div class="quality-affect-axis">效价 ${map.valence.min}–${map.valence.max}</div>
+      <p id="affectCoordinates" class="quality-chart-note" aria-live="polite"></p>` :
+      '<p class="quality-chart-note">当前量表版本暂无可配对的有效效价与唤醒评分。</p>';
+    const bars = coverage.slice(0, 8).map(row => `
+      <li><span title="${esc(row.stimulus_id)}">${esc(row.stimulus_id)}</span>
+      <meter min="0" max="${maximum}" value="${row.n_raters}" aria-label="${esc(row.stimulus_id)}的评分人数"></meter>
+      <strong>${row.n_raters} 人</strong></li>`).join("");
+    return `<div class="survey-quality-charts">
+      <section><h3>素材效价与唤醒分布</h3>
+        <p class="quality-chart-note">每个点代表一个素材，使用当前量表版本中同一份有效答卷的两项评分计算均值。</p>
+        ${plot}
+      </section>
+      <section><h3>素材评分覆盖</h3>
+        <p class="quality-chart-note">按评分人数从少到多展示前 ${Math.min(coverage.length, 8)} 个素材，含已标记答卷。</p>
+        ${bars ? `<ul class="quality-coverage-bars">${bars}</ul>` : '<p class="quality-chart-note">暂无素材评分记录。</p>'}
+      </section>
+    </div>`;
+  }
+
   function renderQuality() {
     const q=state.quality;if(!q)return;
     const summary=[["重复提交",q.n_duplicates],["直线作答提示",q.n_straightline_raters],["无效评分",q.invalid_ratings]];
     const raters=(q.rater_table||[]).map(r=>[fmt(r.rater),fmt(r.n_ratings),fmt(r.valence_sd),fmt(r.arousal_sd),r.straightline_suspect ? badge("需复核","amber") : badge("未触发","gray")]);
     const coverage=(q.stimulus_coverage||[]).map(r=>[fmt(r.stimulus_id),fmt(r.n_raters),fmt(r.valence_mean),fmt(r.arousal_mean),r.problem_rate==null ? "—" : EEG.formatPct(r.problem_rate)]);
-    $("qualityBody").innerHTML=`<div class="survey-data-section-head"><h2>质量检查 <small>规则提示需结合原始答卷复核</small></h2></div><div class="survey-quality-summary">${summary.map(([k,v])=>`<span>${esc(k)} <strong>${fmt(v)}</strong></span>`).join("")}</div><div class="survey-quality-grid"><section><h3>评分者 <small>效价与唤醒离散程度</small></h3><div class="survey-inner-table">${table(["评分者","评分数","效价 SD","唤醒 SD","判定"],raters)}</div></section><section><h3>素材覆盖 <small>各素材的评分情况</small></h3><div class="survey-inner-table">${table(["素材","评分人数","效价均值","唤醒均值","问题率"],coverage)}</div></section></div><details class="survey-tech-details"><summary>检查口径</summary><p>同一评分者与素材的重复提交单独标记；效价与唤醒标准差均低于 1.0 时提示直线作答。这里展示规则检查结果，不等同于人工确认的答卷有效性。</p></details>`;
+    $("qualityBody").innerHTML=`<div class="survey-data-section-head"><h2>质量检查 <small>规则提示需结合原始答卷复核</small></h2></div><div class="survey-quality-summary">${summary.map(([k,v])=>`<span>${esc(k)} <strong>${fmt(v)}</strong></span>`).join("")}</div>${qualityCharts(q)}<div class="survey-quality-grid"><section><h3>评分者 <small>效价与唤醒离散程度</small></h3><div class="survey-inner-table">${table(["评分者","评分数","效价 SD","唤醒 SD","判定"],raters)}</div></section><section><h3>素材覆盖 <small>各素材的评分情况</small></h3><div class="survey-inner-table">${table(["素材","评分人数","效价均值","唤醒均值","问题率"],coverage)}</div></section></div><details class="survey-tech-details"><summary>检查口径</summary><p>同一评分者与素材的重复提交单独标记；效价与唤醒标准差均低于 1.0 时提示直线作答。这里展示规则检查结果，不等同于人工确认的答卷有效性。</p></details>`;
+    const select = $("affectStimulus");
+    if (select) {
+      const markers = $("qualityBody").querySelectorAll("[data-point]");
+      const update = () => {
+        const index = Number(select.value);
+        const point = q.affect_map.points[index];
+        markers.forEach((marker, i) => marker.classList.toggle("active", i === index));
+        $("affectCoordinates").textContent = `效价 ${point.valence.toFixed(2)} · 唤醒度 ${point.arousal.toFixed(2)} · ${point.n} 份配对评分`;
+      };
+      select.addEventListener("change", update);
+      update();
+    }
   }
 
   function renderImports() {

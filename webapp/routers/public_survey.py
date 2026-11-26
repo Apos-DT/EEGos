@@ -128,6 +128,8 @@ async def api_public_schema_submit(
             payload.answers,
             client_ip,
             payload.watch_seconds,
+            expected_index=payload.expected_index,
+            schema_hash=payload.schema_hash,
         )
     except (SchemaError, ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

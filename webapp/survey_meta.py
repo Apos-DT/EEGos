@@ -169,6 +169,25 @@ def responses_for_session(survey_id: str, session_id: str) -> list[dict[str, Any
     return survey_db.list_responses(survey_id, session_id)
 
 
+def record_schema(survey, record):
+    current = schema_for_survey(survey)
+    if record.get("schema_hash") == survey.get("schema_hash", schema_fingerprint(current)):
+        return current
+    for version in survey.get("schema_history") or []:
+        if record.get("schema_hash") == version.get("schema_hash"):
+            return version["schema"]
+    if not record.get("schema_hash") and int(record.get("schema_version", 1)) == int(survey.get("schema_version", 1)):
+        return current
+    raise SchemaError("答卷量表版本缺失，无法安全解释题目")
+
+
+def current_records(survey):
+    fingerprint = survey.get("schema_hash") or schema_fingerprint(schema_for_survey(survey))
+    return [r for r in iter_responses(survey["id"])
+            if r.get("schema_hash") == fingerprint or
+            (not r.get("schema_hash") and r.get("schema_version", 1) == survey.get("schema_version", 1))]
+
+
 def response_detail(survey_id: str, response_id: str) -> dict[str, Any]:
     """单份答卷 + 题目定义，供后台「查看答卷」逐题展开。
 
@@ -182,7 +201,7 @@ def response_detail(survey_id: str, response_id: str) -> dict[str, Any]:
     survey = load_survey(survey_id)
     return {
         "response": record,
-        "schema": schema_for_survey(survey),
+        "schema": record_schema(survey, record),
         "survey": {
             "id": survey["id"],
             "title": survey.get("title", ""),
@@ -214,7 +233,7 @@ def survey_metadata(survey_id: str) -> dict[str, Any]:
 
     survey = load_survey(survey_id)
     schema = schema_for_survey(survey)
-    records = iter_responses(survey_id)
+    records = current_records(survey)
     valid = [record for record in records if record.get("valid")]
     raters = {record.get("rater") for record in valid if record.get("rater")}
     stimuli = {record.get("stimulus_id") for record in valid if record.get("stimulus_id")}
@@ -230,6 +249,7 @@ def survey_metadata(survey_id: str) -> dict[str, Any]:
             "type": question["type"],
             "role": question.get("role", ""),
             "required": question.get("required", True),
+            "min": question.get("min", 1), "max": question.get("max", 9),
             "answered": answered,
             "answer_rate": round(100 * answered / len(records), 1) if records else 0,
         }
@@ -257,6 +277,8 @@ def survey_metadata(survey_id: str) -> dict[str, Any]:
         "schema_version": int(survey.get("schema_version", 1) or 1),
         "schema_hash": survey.get("schema_hash") or (schema_fingerprint(schema) if schema else ""),
         "schema_history": survey.get("schema_history", []),
+        "statistics_scope": "current_schema",
+        "n_all_versions": survey_db.count_responses(survey_id),
         "kind": survey_kind(survey),
         "origin": survey.get("origin", {}),
         "n_questions": len(schema),
@@ -274,6 +296,32 @@ def survey_metadata(survey_id: str) -> dict[str, Any]:
     }
 
 
+def _affect_map(survey, groups):
+    schema = schema_for_survey(survey)
+    questions = [[q for q in schema if q.get("role") == role and q["type"] == "rating"]
+                 for role in ("valence", "arousal")]
+    if any(len(matches) != 1 for matches in questions):
+        return None
+    valence, arousal = (matches[0] for matches in questions)
+    fingerprint = survey.get("schema_hash") or schema_fingerprint(schema)
+    axes = [{key: question[key] for key in ("min", "max")} for question in (valence, arousal)]
+    points = []
+    for stimulus, records in groups.items():
+        pairs = []
+        for record in records:
+            if not record.get("valid") or record.get("schema_hash") != fingerprint:
+                continue
+            values = record.get("normalized") or {}
+            pair = [values.get(q["id"]) for q in (valence, arousal)]
+            if all(type(value) in (int, float) and axis["min"] <= value <= axis["max"]
+                   for value, axis in zip(pair, axes)):
+                pairs.append(pair)
+        if pairs:
+            x, y = (statistics.fmean(scores) for scores in zip(*pairs))
+            points.append({"stimulus_id": stimulus, "valence": x, "arousal": y, "n": len(pairs)})
+    return {"valence": axes[0], "arousal": axes[1], "points": points}
+
+
 def quality_report(survey_id: str) -> dict[str, Any]:
     """数据质量诊断：重复、直线作答、无效评分、逐素材覆盖率。
 
@@ -283,7 +331,7 @@ def quality_report(survey_id: str) -> dict[str, Any]:
     """
 
     survey = load_survey(survey_id)
-    records = iter_responses(survey_id)
+    records = current_records(survey)
     valence_key = _role_key(survey, "valence")
     arousal_key = _role_key(survey, "arousal")
     issues_key = _role_key(survey, "issues")
@@ -366,6 +414,7 @@ def quality_report(survey_id: str) -> dict[str, Any]:
         "invalid_ratings": invalid_ratings,
         "n_stimuli_covered": len(by_stimulus),
         "stimulus_coverage": coverage,
+        "affect_map": _affect_map(survey, by_stimulus),
         "mean_valence": round(statistics.fmean(_numeric(records, valence_key)), 3) if valence_key and _numeric(records, valence_key) else None,
         "mean_arousal": round(statistics.fmean(_numeric(records, arousal_key)), 3) if arousal_key and _numeric(records, arousal_key) else None,
     }
@@ -395,7 +444,7 @@ def export_wjx_csv(survey_id: str) -> str:
     schema = schema_for_survey(survey)
     if not schema:
         raise SchemaError("该问卷没有题目定义，无法导出")
-    records = sorted(iter_responses(survey_id), key=lambda item: item.get("serial_no") or 0)
+    records = sorted(current_records(survey), key=lambda item: item.get("serial_no") or 0)
     buffer = io.StringIO()
     headers = PLATFORM_OUTPUT_COLUMNS + [wjx_header(question, index) for index, question in enumerate(schema, start=1)]
     writer = csv.writer(buffer)
@@ -421,7 +470,8 @@ def export_clean_csv(survey_id: str) -> str:
 
     survey = load_survey(survey_id)
     schema = schema_for_survey(survey)
-    roles = [question["role"] for question in schema if question.get("role")]
+    versions = [schema] + [v["schema"] for v in survey.get("schema_history") or []]
+    roles = list(dict.fromkeys(q["role"] for version in versions for q in version if q.get("role")))
     fields = [
         "response_id", "survey_id", "schema_version", "origin", "batch_id", "raw_row",
         "submitted_at", "duration_s", "source", "ip_region", "ip_hash",
@@ -436,8 +486,9 @@ def export_clean_csv(survey_id: str) -> str:
         normalized = record.get("normalized") or {}
         row: dict[str, Any] = {key: record.get(key) for key in fields}
         row["flags"] = ";".join(record.get("flags") or [])
+        own_keys = {q["role"]: q["id"] for q in record_schema(survey, record) if q.get("role")}
         for role in roles:
-            value = normalized.get(role_keys[role])
+            value = normalized.get(own_keys.get(role))
             row[f"n_{role}"] = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
         writer.writerow(row)
     return buffer.getvalue()

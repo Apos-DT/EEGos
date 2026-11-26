@@ -68,6 +68,8 @@ class SurveyUpdateRequest(BaseModel):
 
 class SchemaAnswersRequest(BaseModel):
     answers: dict[str, Any]
+    expected_index: int = Field(..., ge=0)
+    schema_hash: str = Field(..., min_length=1, max_length=128)
     watch_seconds: int = Field(0, ge=0, le=86400)
 
 
