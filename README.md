@@ -105,7 +105,7 @@ python -m webapp
 # 被试端   问卷里生成的 /q/<token> 分享链接（手机需与电脑同一局域网）
 ```
 
-启动时会打印本机地址与被试访问地址。**正式采集前请设置管理端口令**，否则同网段任何人都能查看并导出全部答卷：
+启动时会打印本机地址与被试访问地址。管理端使用账号登录。首次管理员注册须从本机完成，后续注册账号等待管理员启用。自动化访问可配置额外令牌：
 
 ```powershell
 $env:EEG_WEB_TOKEN = "自己定一个口令"
@@ -117,7 +117,7 @@ python -m webapp
 |---|---|---|
 | `EEG_WEB_HOST` | `0.0.0.0` | 被试扫码需局域网可达；只在本机用可设 `127.0.0.1` |
 | `EEG_WEB_PORT` | `8770` | 端口 |
-| `EEG_WEB_TOKEN` | 空（不校验） | 管理端口令；`/q`、`/api/public`、`/api/health` 永远公开 |
+| `EEG_WEB_TOKEN` | 空（使用账号登录） | 管理端口令；`/q`、`/api/public`、`/api/health` 永远公开 |
 | `EEG_WEB_RELOAD` | `0` | 设 `1` 后改代码自动重载（仅开发用） |
 | `EEG_PYTHON` | 自动探测 | 启动器使用的解释器路径（如 `C:\Python312\python.exe`） |
 | `EEG_NO_BROWSER` | 空 | 设 `1` 后启动不自动打开浏览器 |
@@ -141,7 +141,7 @@ DDA 论文复现入口：`POST /api/integrations/dda/run`。用 `EEG_DDA_REPO` �
 
 新增按业务类型接入现有流程：问卷设计、答卷导入、EEG 处理和模型训练；素材、特征 NPZ 与文档支持上传。派生统计和文件结构预览仍由源数据计算，不作为可随意修改的独立数据。公共查询/排序/分页位于 `webapp/static/js/list_controller.js`，管理交互位于 `records.js`，后端由 `record_resources.py` 适配各业务类型、`record_store.py` 负责持久化。新增资源注册适配器即可复用，不需要另写一套 CRUD。
 
-管理信息和操作历史存放于本机 `data/record_management/state.json`，已排除 Git。写入使用跨进程锁、原子替换及版本号检查，冲突返回 HTTP 409；既有管理端令牌保护同样适用于记录管理接口。接口统一为 `/api/records/{resource}`、`/item`（GET/PATCH）、`/delete`、`/restore`，查询支持关键词、当前记录/回收站及分页。验证命令：`python -m unittest discover -s tests -p test_record_management.py`。
+管理信息和操作历史存放于本机 `data/emostudio.sqlite3`，已排除 Git。写入使用 SQLite 事务与版本号检查，冲突返回 HTTP 409；账号访问保护同样适用于记录管理接口。修改、删除和恢复事件记录操作人，历史事件允许为空。接口统一为 `/api/records/{resource}`、`/item`（GET/PATCH）、`/delete`、`/restore`，查询支持关键词、当前记录/回收站及分页。验证命令：`python -m unittest discover -s tests -p test_record_management.py`。
 
 ### raw.npz 契约
 
@@ -276,3 +276,21 @@ EEGos/
 ## 7. 引用与致谢
 
 系统实现参考了 EEG 情绪识别综述、跨被试域适应与图/原型方法，以及 DEAP、MPED、FACED 等公开数据集的实验范式。完整文献列表见 `research/references/参考文献清单_汇总.xlsx` 与 `docs/04_文献综述与需求依据.md`。原始数据、质量评分与文献由课题组提供；本仓库不重新分发受版权保护的刺激材料。
+
+
+### 数据备份与恢复
+
+采集和训练暂停后执行 `python scripts/backup_workspace.py backup --out <源数据目录外的新目录>`。
+脚本生成SQLite一致性快照，复制data、artifacts、deliverables，保存文件指纹并验证。
+`python scripts/backup_workspace.py verify --source <备份目录>` 校验完整性。
+`python scripts/backup_workspace.py restore --source <备份目录> --out <全新恢复目录>` 恢复到独立目录。
+恢复副本启动时设置 `EEG_DB_PATH=<恢复目录>/database.sqlite3`，并将 `EEG_DATA_DIR`、
+`EEG_ARTIFACTS_DIR`、`EEG_DELIVERABLES_DIR` 指向恢复目录下对应子目录。已有实验元数据可能记录源机器绝对路径，
+跨机器恢复后需按恢复目录重建索引并核验报告链接。恢复命令拒绝覆盖已有目录。
+
+### 评价协议更新
+
+新版普通训练在有trial_ids时按完整试次划分被试内训练，LOSO优先留整名源被试验证。
+每次训练保存评价版本、划分索引、标准化参数、输入指纹和完成元数据。
+旧实验原有指标保留，正式比较前核对其数据版本和划分协议。
+DDA独立环境使用 `research/reproductions/dda_sidecar` 的归档实现，升级时应同步运行副本并核验指纹。
