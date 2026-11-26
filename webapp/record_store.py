@@ -80,10 +80,10 @@ def _save_metadata(conn, resource, record_id, value):
     )
 
 
-def _save_event(conn, resource, record_id, before, after, at):
+def _save_event(conn, resource, record_id, before, after, at, actor_user_id=None):
     conn.execute(
-        "INSERT INTO record_events (resource, record_id, before_json, after_json, event_at) VALUES (?, ?, ?, ?, ?)",
-        (resource, str(record_id), _json(before), _json(after), at),
+        "INSERT INTO record_events (resource, record_id, before_json, after_json, event_at, actor_user_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (resource, str(record_id), _json(before), _json(after), at, actor_user_id),
     )
 
 
@@ -161,7 +161,7 @@ def snapshot():
             resources.setdefault(row["resource"], {})[row["record_id"]] = _decode_metadata(row)
         events = [
             {"resource": row["resource"], "id": row["record_id"], "before": json.loads(row["before_json"]),
-             "after": json.loads(row["after_json"]), "at": row["event_at"]}
+             "after": json.loads(row["after_json"]), "at": row["event_at"], "actor_user_id": row["actor_user_id"]}
             for row in conn.execute("SELECT * FROM record_events ORDER BY sequence")
         ]
         uploaded = {}
@@ -177,7 +177,7 @@ def metadata(resource, record_id, state=None):
         return _one_metadata(conn, resource, record_id)
 
 
-def update(resource, record_id, changes, revision):
+def update(resource, record_id, changes, revision, actor_user_id=None):
     """Atomic metadata, soft delete and restore with optimistic concurrency."""
     with _store(write=True) as conn:
         before = _one_metadata(conn, resource, record_id)
@@ -186,19 +186,19 @@ def update(resource, record_id, changes, revision):
         after = {**before, **changes, "revision": before["revision"] + 1,
                  "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
         _save_metadata(conn, resource, record_id, after)
-        _save_event(conn, resource, record_id, before, after, after["updated_at"])
+        _save_event(conn, resource, record_id, before, after, after["updated_at"], actor_user_id)
     invalidate()
     return copy.deepcopy(after)
 
 
-def register_upload(resource, record_id, row, title):
+def register_upload(resource, record_id, row, title, actor_user_id=None):
     with _store(write=True) as conn:
         before = _one_metadata(conn, resource, record_id)
         after = {**before, "title": title, "revision": before["revision"] + 1,
                  "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
         _save_upload(conn, resource, record_id, row)
         _save_metadata(conn, resource, record_id, after)
-        _save_event(conn, resource, record_id, before, after, after["updated_at"])
+        _save_event(conn, resource, record_id, before, after, after["updated_at"], actor_user_id)
     invalidate()
 
 

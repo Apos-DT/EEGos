@@ -56,6 +56,14 @@ async def list_records(resource: str, q: str = Query("", max_length=200),
                        view: Literal["active", "trash", "all"] = "active",
                        page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100)):
     definition = config(resource)
+    if resource == "responses":
+        from ..db import transaction
+        # Legacy resource adapters remain available for imported session rows.
+        with transaction() as conn:
+            persisted = conn.execute("SELECT 1 FROM survey_responses LIMIT 1").fetchone()
+        if persisted:
+            result = await run_in_threadpool(resources.query_response_records, q.strip(), view, page, page_size)
+            return {"resource": resource, "definition": definition, **result}
     rows = await run_in_threadpool(resources.records, resource)
     query = q.strip().casefold()
     filtered = [row for row in rows if (
@@ -74,7 +82,7 @@ async def read_record(resource: str, id: str = Query(min_length=1, max_length=51
     return await run_in_threadpool(existing, resource, id)
 
 
-def mutate(resource, payload, operation):
+def mutate(resource, payload, operation, actor_user_id=None):
     item = existing(resource, payload.id)
     if operation == "delete" and item["busy"]:
         raise HTTPException(409, "任务仍在运行，结束后再移入回收站")
@@ -93,25 +101,28 @@ def mutate(resource, payload, operation):
     else:
         changes = {"deleted_at": datetime.now().astimezone().isoformat(timespec="seconds") if operation == "delete" else None}
     try:
-        meta = store.update(resource, payload.id, changes, payload.revision)
+        meta = store.update(resource, payload.id, changes, payload.revision, actor_user_id=actor_user_id)
     except store.ConflictError as exc:
         raise HTTPException(409, str(exc)) from exc
     return {"id": payload.id, "metadata": meta}
 
 
 @router.patch("/{resource}/item")
-async def edit_record(resource: str, payload: RecordChange):
-    return await run_in_threadpool(mutate, resource, payload, "edit")
+async def edit_record(resource: str, payload: RecordChange, request: Request):
+    user = getattr(request.state, "user", None)
+    return await run_in_threadpool(mutate, resource, payload, "edit", user["id"] if user else None)
 
 
 @router.post("/{resource}/delete")
-async def delete_record(resource: str, payload: RecordChange):
-    return await run_in_threadpool(mutate, resource, payload, "delete")
+async def delete_record(resource: str, payload: RecordChange, request: Request):
+    user = getattr(request.state, "user", None)
+    return await run_in_threadpool(mutate, resource, payload, "delete", user["id"] if user else None)
 
 
 @router.post("/{resource}/restore")
-async def restore_record(resource: str, payload: RecordChange):
-    return await run_in_threadpool(mutate, resource, payload, "restore")
+async def restore_record(resource: str, payload: RecordChange, request: Request):
+    user = getattr(request.state, "user", None)
+    return await run_in_threadpool(mutate, resource, payload, "restore", user["id"] if user else None)
 
 
 def save_file(resource, filename, body):

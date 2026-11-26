@@ -27,6 +27,9 @@ class RecordManagementTests(unittest.TestCase):
         mocked.start(); self.addCleanup(mocked.stop)
         mocked = patch.dict(os.environ, {"EEG_DB_PATH": str(self.root / "app.sqlite3")})
         mocked.start(); self.addCleanup(mocked.stop)
+        from webapp.db import transaction
+        with transaction(write=True) as conn:
+            conn.execute("INSERT INTO users(id,username,email,password_hash,status) VALUES (1,'fixture','fixture@example.test','fixture','active')")
         self.client = WorkspaceClient(app)
         self.rows = [{"id": "sample/一", "name": "原始名称", "accuracy": .51, "survey_id": "test-survey"},
                      {"id": "sample-two", "name": "另一个名称", "accuracy": .6, "survey_id": "test-survey"}]

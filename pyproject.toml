@@ -34,7 +34,10 @@ eeg-emostudio = "eeg_emostudio.cli:main"
 eeg-emostudio-web = "webapp.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["eeg_emostudio*"]
+include = ["eeg_emostudio*", "webapp*"]
+
+[tool.setuptools.package-data]
+webapp = ["templates/*.html", "static/js/*.js", "static/css/*.css", "db_schema/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

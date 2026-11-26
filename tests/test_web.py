@@ -49,9 +49,14 @@ class WebTests(unittest.TestCase):
             self.assertIsInstance(response.json(), dict)
 
     def test_document_download_scope(self):
-        self.assertEqual(self.client.get("/files/docx/02").status_code, 200)
-        self.assertEqual(self.client.get("/files/pdf/02").status_code, 200)
-        self.assertEqual(self.client.get("/files/docx/99").status_code, 404)
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "fixture.docx"
+            target.write_bytes(b"download fixture")
+            with patch("webapp.routers.files.resolve_doc", side_effect=lambda no, extension: target if no == "02" else None):
+                self.assertEqual(self.client.get("/files/docx/02").status_code, 200)
+                self.assertEqual(self.client.get("/files/pdf/02").status_code, 200)
+                self.assertEqual(self.client.get("/files/docx/99").status_code, 404)
         self.assertEqual(self.client.get("/files/audit/../../etc/passwd").status_code, 404)
 
     def test_invalid_training_request_rejected(self):

@@ -1,6 +1,7 @@
 """Resource adapters: common list CRUD, domain-specific creation workflows."""
 from __future__ import annotations
 
+import json
 import math
 from urllib.parse import quote
 
@@ -69,8 +70,8 @@ def source_rows(resource):
         return loader(), id_key, title_key
 
 
-def records(resource):
-    rows, id_key, title_key = source_rows(resource)
+def records(resource, source=None):
+    rows, id_key, title_key = source if source is not None else source_rows(resource)
     metadata = store.metadata_index(resource)
     result = []
     for row in rows:
@@ -96,4 +97,31 @@ def records(resource):
 
 
 def get_record(resource, record_id):
+    if resource == "responses":
+        from .db import transaction
+        with transaction() as conn:
+            row = conn.execute("SELECT payload_json FROM survey_responses WHERE response_id=?", (record_id,)).fetchone()
+        if row:
+            return records(resource, ([json.loads(row[0])], "response_id", "response_id"))[0]
     return next((item for item in records(resource) if item["id"] == record_id), None)
+
+
+def query_response_records(query, view, page, page_size):
+    from .db import transaction
+    conditions, args = [], []
+    if view != "all":
+        conditions.append("m.deleted_at IS NOT NULL" if view == "trash" else "m.deleted_at IS NULL")
+    if query:
+        conditions.append("instr(lower(r.payload_json || coalesce(m.title,'') || coalesce(m.notes,'') || coalesce(m.tags_json,'')),lower(?))>0")
+        args.append(query)
+    where = " AND ".join(conditions) or "1=1"
+    source = "survey_responses r LEFT JOIN record_metadata m ON m.resource='responses' AND m.record_id=r.response_id"
+    with transaction() as conn:
+        total = conn.execute(f"SELECT count(*) FROM {source} WHERE {where}", args).fetchone()[0]
+        trash = conn.execute(f"SELECT count(*) FROM {source} WHERE m.deleted_at IS NOT NULL").fetchone()[0]
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        rows = conn.execute(f"SELECT r.payload_json FROM {source} WHERE {where} ORDER BY coalesce(m.updated_at,r.submitted_at) DESC,r.response_id DESC LIMIT ? OFFSET ?",
+                            args + [page_size, (page-1)*page_size]).fetchall()
+    return {"items": records("responses", ([json.loads(row[0]) for row in rows], "response_id", "response_id")),
+            "total": total, "page": page, "pages": pages, "page_size": page_size, "trash_count": trash}
