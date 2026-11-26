@@ -127,7 +127,11 @@ def resolve_upload(upload_id: str) -> dict[str, Any]:
 
 
 def output_for(upload_id: str) -> Path:
-    return OUTPUT_DIR / _safe_id(upload_id)
+    base = OUTPUT_DIR / _safe_id(upload_id)
+    reports = list(OUTPUT_DIR.glob(f"{_safe_id(upload_id)}--*/eeg_report.json"))
+    if reports:
+        return max(reports, key=lambda p: p.stat().st_mtime_ns).parent
+    return base
 
 
 def report_for(upload_id: str) -> dict[str, Any]:

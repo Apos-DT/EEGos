@@ -84,6 +84,7 @@ def bootstrap_accuracy_ci(
     n_bootstrap: int = 1000,
     seed: int = 42,
     alpha: float = 0.05,
+    groups=None,
 ) -> tuple[float, float]:
     """Percentile bootstrap confidence interval for accuracy."""
 
@@ -91,11 +92,18 @@ def bootstrap_accuracy_ci(
     pred = np.asarray(y_pred, dtype=np.int64)
     if len(true) == 0:
         return (float("nan"), float("nan"))
+    units = np.arange(len(true)) if groups is None else np.asarray(groups)
+    if len(units) != len(true):
+        raise ValueError("置信区间分组长度不一致")
+    unique = np.unique(units)
+    if len(unique) < 2:
+        return (None, None)
+    unit_scores = np.asarray([(true[units == unit] == pred[units == unit]).mean() for unit in unique])
     rng = np.random.default_rng(seed)
     values = []
     for _ in range(n_bootstrap):
-        idx = rng.integers(0, len(true), len(true))
-        values.append(float((true[idx] == pred[idx]).mean()))
+        idx = rng.integers(0, len(unique), len(unique))
+        values.append(float(unit_scores[idx].mean()))
     lower = float(np.quantile(values, alpha / 2))
     upper = float(np.quantile(values, 1 - alpha / 2))
     return round(lower, 4), round(upper, 4)

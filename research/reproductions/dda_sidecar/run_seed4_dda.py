@@ -393,7 +393,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     peak = [row["paper_protocol_peak_accuracy"] for row in folds]
     fold_confusion = np.sum([np.asarray(row["confusion_matrix"], dtype=np.int64) for row in folds], axis=0)
     rng = np.random.default_rng(args.seed)
-    boot = [float(np.mean(rng.choice(final, size=len(final), replace=True))) for _ in range(2000)]
+    unit_key = "target_subject" if args.setting == "cross-subject" else "session"
+    units = sorted({str(row[unit_key]) for row in folds})
+    unit_scores = [float(np.mean([r["final_accuracy"] for r in folds if str(r[unit_key]) == unit])) for unit in units]
+    boot = [float(np.mean(rng.choice(unit_scores, size=len(units), replace=True))) for _ in range(2000)] if len(units) > 1 else []
     per_subject = []
     for sid in sorted({row["target_subject"] for row in folds if row["target_subject"] != "ALL"}):
         subject_folds = [row for row in folds if row["target_subject"] == sid]
@@ -416,7 +419,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "balanced_accuracy": round(float(np.mean([r["balanced_accuracy"] for r in folds])), 4),
             "macro_f1": round(float(np.mean([r["macro_f1"] for r in folds])), 4),
             "cohen_kappa": round(float(np.mean([r["cohen_kappa"] for r in folds])), 4),
-            "accuracy_ci95": [round(float(np.quantile(boot, 0.025)), 4), round(float(np.quantile(boot, 0.975)), 4)],
+            "accuracy_ci95": [round(float(np.quantile(boot, 0.025)), 4), round(float(np.quantile(boot, 0.975)), 4)] if boot else [None, None],
+            "accuracy_ci_unit": unit_key,
             "confusion_matrix": fold_confusion.tolist(),
             "paper_protocol_peak_accuracy": round(float(np.mean(peak)), 4),
             "paper_protocol_peak_std": round(float(np.std(peak, ddof=1)) if len(peak) > 1 else 0.0, 4),

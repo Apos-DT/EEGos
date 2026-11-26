@@ -107,9 +107,9 @@ def training_task(
     if not dataset_path.exists():
         raise FileNotFoundError(f"数据集不存在：{dataset_path}")
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_id = f"{stamp}_{model}_{setting}"
+    run_id = f"{stamp}_{model}_{setting}_{job.id}"
     output = EXPERIMENTS_DIR / run_id
-    output.mkdir(parents=True, exist_ok=True)
+    output.mkdir(parents=True, exist_ok=False)
     is_demo = "demo" in dataset_path.parts or dataset_path.name.startswith("demo")
     (output / "run_meta.json").write_text(
         json.dumps(

@@ -99,7 +99,7 @@ def _eval_loss(
     losses = []
     with torch.no_grad():
         for xb, yb in loader:
-            xb, yb = xb.to(device), yb.to(device)
+            xb, yb = xb.to(device, non_blocking=device.type == "cuda"), yb.to(device, non_blocking=device.type == "cuda")
             losses.append(float(criterion(model(xb), yb).item()))
     return float(np.mean(losses)) if losses else float("nan")
 
@@ -128,12 +128,14 @@ def _train_fold(
         shuffle=True,
         generator=generator,
         num_workers=0,
+        pin_memory=device.type == "cuda",
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=min(config.batch_size, max(len(val_dataset), 1)),
         shuffle=False,
         num_workers=0,
+        pin_memory=device.type == "cuda",
     )
     n_channels, n_features = x_train.shape[1], x_train.shape[2]
     model = _make_model(model_name, n_channels, n_features, n_classes, config).to(device)
@@ -151,7 +153,7 @@ def _train_fold(
         model.train()
         running = []
         for xb, yb in train_loader:
-            xb, yb = xb.to(device), yb.to(device)
+            xb, yb = xb.to(device, non_blocking=device.type == "cuda"), yb.to(device, non_blocking=device.type == "cuda")
             optimizer.zero_grad(set_to_none=True)
             logits = model(xb)
             loss = criterion(logits, yb)
@@ -234,6 +236,7 @@ def run_loso(
     config: TrainConfig | None = None,
     class_names: Sequence[str] | None = None,
     output_dir: str | Path | None = None,
+    trial_ids=None, sessions=None,
 ) -> dict[str, Any]:
     """Run leave-one-subject-out evaluation and return fold + aggregate metrics."""
 
@@ -245,7 +248,7 @@ def run_loso(
     set_seed(config.seed)
     device = resolve_device(config.device)
     n_classes = int(labels.max()) + 1
-    folds = loso_splits(labels, groups, val_fraction=config.val_fraction, seed=config.seed)
+    folds = loso_splits(labels, groups, val_fraction=config.val_fraction, seed=config.seed, trial_ids=trial_ids, sessions=sessions)
     fold_records: list[dict[str, Any]] = []
     oof_pred = np.full(len(labels), -1, dtype=np.int64)
     oof_prob = np.full((len(labels), n_classes), np.nan, dtype=np.float64)
@@ -285,6 +288,10 @@ def run_loso(
             torch.save(
                 {
                     "state_dict": model.state_dict(),
+                    "scaler": training_info["scaler"],
+                    "model_name": model_name, "n_channels": features.shape[1], "n_features": features.shape[2], "n_classes": n_classes,
+                    "class_names": list(class_names) if class_names is not None else None,
+                    "train_idx": train_idx.tolist(), "val_idx": val_idx.tolist(), "test_idx": test_idx.tolist(),
                     "config": config_used,
                     "fold": fold["fold"],
                     "test_subject": fold["test_subject"],
@@ -299,7 +306,8 @@ def run_loso(
     if np.any(oof_pred < 0):
         raise RuntimeError("存在未被任何折预测的样本，无法计算 OOF 指标")
     overall = compute_metrics(labels, oof_pred, n_classes, class_names)
-    overall["accuracy_ci95"] = bootstrap_accuracy_ci(labels, oof_pred, seed=config.seed)
+    overall["accuracy_ci_unit"] = "subject mean"
+    overall["accuracy_ci95"] = bootstrap_accuracy_ci(labels, oof_pred, seed=config.seed, groups=groups)
     overall["confusion_matrix"] = compute_metrics(
         labels, oof_pred, n_classes, class_names
     )["confusion_matrix"]
@@ -317,6 +325,8 @@ def run_loso(
         )
 
     result: dict[str, Any] = {
+        "evaluation_version": 2,
+        "validation_unit": "source-subject" if len(set(groups)) > 2 else "trial" if trial_ids is not None else "sample",
         "setting": "leave-one-subject-out",
         "model": model_name,
         "n_samples": int(len(labels)),
@@ -350,6 +360,7 @@ def run_subject_dependent(
     config: TrainConfig | None = None,
     class_names: Sequence[str] | None = None,
     output_dir: str | Path | None = None,
+    trial_ids=None, sessions=None,
 ) -> dict[str, Any]:
     """Run the within-subject (random stratified) evaluation setting."""
 
@@ -366,7 +377,7 @@ def run_subject_dependent(
         groups,
         test_fraction=0.2,
         val_fraction=config.val_fraction,
-        seed=config.seed,
+        seed=config.seed, trial_ids=trial_ids, sessions=sessions,
     )
     model, training_info, config_used = _train_fold(
         features[split["train_idx"]],
@@ -381,19 +392,34 @@ def run_subject_dependent(
     x_test = (features[split["test_idx"]] - np.asarray(scaler["mean"])) / np.asarray(scaler["std"])
     pred, prob = predict(model, x_test, device)
     metrics = compute_metrics(labels[split["test_idx"]], pred, n_classes, class_names)
-    metrics["accuracy_ci95"] = bootstrap_accuracy_ci(labels[split["test_idx"]], pred, seed=config.seed)
+    from ..data.splits import trial_groups
+    confidence_groups = trial_groups(groups, sessions, trial_ids)
+    metrics["accuracy_ci95"] = bootstrap_accuracy_ci(labels[split["test_idx"]], pred, seed=config.seed,
+        groups=confidence_groups[split["test_idx"]] if confidence_groups is not None else None)
     result = {
+        "evaluation_version": 2,
+        "split_unit": "trial" if trial_ids is not None else "sample",
         "setting": "subject-dependent",
         "model": model_name,
         "n_samples": int(len(labels)),
         "split_sizes": {key: int(len(value)) for key, value in split.items()},
         "test_metrics": metrics,
+        "overall": metrics,
+        "per_subject": [], "folds": [],
+        "n_subjects": len(set(groups)),
+        "n_classes": n_classes,
+        "class_names": list(class_names) if class_names is not None else [str(i) for i in range(n_classes)],
+        "split_indices": {key: value.tolist() for key, value in split.items()},
         "training": {key: value for key, value in training_info.items() if key != "scaler"},
         "config": config_used,
         "environment": _environment(),
     }
     if output_dir is not None:
         _save_result(result, output_dir)
+        torch.save({"state_dict": model.state_dict(), "scaler": scaler,
+                    "model_name": model_name, "n_channels": features.shape[1], "n_features": features.shape[2], "n_classes": n_classes,
+                    "config": config_used, "class_names": list(class_names) if class_names is not None else None,
+                    "split_indices": result["split_indices"]}, Path(output_dir) / "checkpoint.pt")
         np.savez_compressed(
             Path(output_dir) / "test_predictions.npz",
             y_true=labels[split["test_idx"]],

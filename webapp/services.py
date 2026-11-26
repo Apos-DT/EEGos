@@ -513,7 +513,7 @@ def _experiment_dirs() -> list[Path]:
 def _experiment_info(path: Path, metrics: Any, run_meta: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(metrics, dict):
         return None
-    overall = metrics.get("overall", {}) or {}
+    overall = metrics.get("overall") or metrics.get("test_metrics", {}) or {}
     if not isinstance(overall, dict) or "accuracy" not in overall:
         return None
     run_id = "demo" if path.name == "demo" else path.name
@@ -856,6 +856,23 @@ def merge_feature_datasets(dataset_ids: list[str]) -> dict[str, Any]:
             raise ValueError("特征形状不一致，不能合并")
         if class_names is not None and item["class_names"] is not None and list(item["class_names"]) != class_names:
             raise ValueError("类别名不一致，不能合并")
+    manifests = [_manifest_for(path) for path in paths]
+    keys = ("feature_key", "aggregation", "aggregate", "unit", "channel_order", "channel_names", "window_s", "step_s", "method", "bands", "fs", "target_fs")
+    for key in keys:
+        values = [json.dumps(m.get("extra", {}).get(key), sort_keys=True) for m in manifests]
+        if len(set(values)) != 1:
+            raise ValueError(f"特征语义不兼容：{key}")
+    names = [None if item["feature_names"] is None else item["feature_names"].tolist() for item in loaded]
+    if any(value != names[0] for value in names):
+        raise ValueError("特征名称或顺序不一致")
+    seen = set()
+    for item in loaded:
+        if item.get("trial_ids") is None:
+            raise ValueError("合并需要试次标识以核验来源重叠")
+        identities = set(zip(item["subjects"].tolist(), item["sessions"].tolist(), item["trial_ids"].tolist()))
+        if seen & identities:
+            raise ValueError("特征集包含重复来源试次，请选择互不重叠的子集")
+        seen.update(identities)
     x = np.concatenate([item["x"] for item in loaded], axis=0)
     y = np.concatenate([item["y"] for item in loaded], axis=0)
     subjects = np.concatenate([np.asarray(item["subjects"]) for item in loaded]).astype(str)
@@ -874,11 +891,11 @@ def merge_feature_datasets(dataset_ids: list[str]) -> dict[str, Any]:
         subjects,
         sessions=sessions,
         class_names=class_names,
-        feature_names=["delta", "theta", "alpha", "beta", "gamma"],
+        feature_names=first["feature_names"],
         trial_ids=trial_ids if any(trial_ids) else None,
         metadata={
             "source": "merged",
-            "sources": [path.name for path in paths],
+            "sources": [{"file": path.name, "sha256": item["sha256"]} for path, item in zip(paths, loaded)],
             "n_subjects": int(len(set(subjects.tolist()))),
             "note": "多个特征集合并；用于跨被试 LOSO。",
         },

@@ -60,7 +60,7 @@ def run_dda(
     if not (SEED_IV_DIR / "eeg_feature_smooth").is_dir():
         raise FileNotFoundError(f"未找到本地 SEED-IV 官方特征目录：{SEED_IV_DIR / 'eeg_feature_smooth'}")
 
-    run_id = f"{datetime.now():%Y%m%d-%H%M%S}_dda_{algorithm.lower()}_{setting.replace('-', '')}"
+    run_id = f"{datetime.now():%Y%m%d-%H%M%S}_dda_{algorithm.lower()}_{setting.replace('-', '')}_{job.id}"
     output = EXPERIMENTS_DIR / run_id
     output.mkdir(parents=True, exist_ok=False)
     (output / "run_meta.json").write_text(

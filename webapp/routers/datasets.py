@@ -186,7 +186,8 @@ async def api_eeg_process(payload: EEGProcessRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="低通截止必须小于输入和输出采样率的 Nyquist 频率")
     if payload.window > payload.epoch_end - payload.epoch_start:
         raise HTTPException(status_code=422, detail="DE 窗口不能超过事件分段长度")
-    output = output_for(payload.upload_id)
+    import uuid
+    output = output_for(payload.upload_id).parent / f"{payload.upload_id}--{uuid.uuid4().hex[:12]}"
     job = manager.submit(
         "eeg",
         f"EEG 清洗 · {upload.get('filename', payload.upload_id)}",
@@ -208,7 +209,7 @@ async def api_eeg_process(payload: EEGProcessRequest) -> dict[str, Any]:
         ),
         payload.model_dump(),
     )
-    return {"job": job_payload(job), "output": str(output.relative_to(ROOT))}
+    return {"job": job_payload(job), "output": str(output.relative_to(ROOT)) if output.is_relative_to(ROOT) else str(output)}
 
 
 @router.get("/api/eeg/report/{upload_id}")
@@ -251,7 +252,7 @@ async def api_raw_upload(
 
     raws = await run_in_threadpool(list_raw_datasets)
     info = next((item for item in raws if item["path"].endswith(target.name)), None)
-    return {"uploaded": True, "raw": info, "path": str(target.relative_to(ROOT))}
+    return {"uploaded": True, "raw": info, "path": str(target.relative_to(ROOT)) if target.is_relative_to(ROOT) else str(target)}
 
 
 def _validate_raw_upload(body: bytes, eeg_confirmed: bool) -> None:

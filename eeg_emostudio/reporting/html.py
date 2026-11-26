@@ -40,8 +40,7 @@ def render_loso_report(
         ["Cohen's κ", f"{overall['cohen_kappa']:.4f}"],
         [
             "Accuracy 95% CI",
-            f"{overall.get('accuracy_ci95', ('—', '—'))[0]:.4f} – "
-            f"{overall.get('accuracy_ci95', ('—', '—'))[1]:.4f}",
+            " – ".join("独立单位不足" if value is None else f"{value:.4f}" for value in overall.get("accuracy_ci95", (None, None))),
         ],
     ]
     per_class_rows = [

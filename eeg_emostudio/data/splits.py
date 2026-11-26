@@ -40,11 +40,33 @@ def _stratified_holdout(
     return np.sort(train), np.sort(val)
 
 
+def trial_groups(subjects, sessions=None, trial_ids=None):
+    if trial_ids is None:
+        return None
+    sessions = sessions if sessions is not None else [""] * len(subjects)
+    if len(trial_ids) != len(subjects) or len(sessions) != len(subjects) or any(not str(t) for t in trial_ids):
+        raise ValueError("试次分组信息不完整")
+    return np.asarray([str((str(a), str(b), str(c))) for a, b, c in zip(subjects, sessions, trial_ids)])
+
+
+def _group_holdout(indices, labels, groups, fraction, rng):
+    unique = np.unique(groups[indices])
+    group_labels = []
+    for group in unique:
+        values = np.unique(labels[indices[groups[indices] == group]])
+        if len(values) != 1:
+            raise ValueError("同一试次包含多个情绪标签")
+        group_labels.append(values[0])
+    train, val = _stratified_holdout(np.arange(len(unique)), np.asarray(group_labels), fraction, rng)
+    return indices[np.isin(groups[indices], unique[train])], indices[np.isin(groups[indices], unique[val])]
+
+
 def loso_splits(
     y: Sequence[int],
     subjects: Sequence[str],
     val_fraction: float = 0.2,
     seed: int = 42,
+    trial_ids=None, sessions=None,
 ) -> list[dict[str, Any]]:
     """Leave-one-subject-out folds with a subject-disjoint validation split.
 
@@ -59,7 +81,17 @@ def loso_splits(
     for test_subject in sorted(np.unique(groups)):
         test_idx = np.where(groups == test_subject)[0]
         pool = np.where(groups != test_subject)[0]
-        train_idx, val_idx = _stratified_holdout(pool, labels, val_fraction, rng)
+        source_subjects = rng.permutation(np.unique(groups[pool]))
+        if len(source_subjects) > 1:
+            n_val = min(len(source_subjects) - 1, max(1, round(len(source_subjects) * val_fraction)))
+            val_idx = pool[np.isin(groups[pool], source_subjects[:n_val])]
+            train_idx = pool[~np.isin(groups[pool], source_subjects[:n_val])]
+        else:
+            trials = trial_groups(groups, sessions, trial_ids)
+            if trials is None:
+                train_idx, val_idx = _stratified_holdout(pool, labels, val_fraction, rng)
+            else:
+                train_idx, val_idx = _group_holdout(pool, labels, trials, val_fraction, rng)
         if len(train_idx) == 0:
             raise ValueError(f"测试被试 {test_subject} 留出后没有训练样本")
         if len(val_idx) == 0:
@@ -87,6 +119,7 @@ def subject_dependent_split(
     test_fraction: float = 0.2,
     val_fraction: float = 0.2,
     seed: int = 42,
+    trial_ids=None, sessions=None,
 ) -> dict[str, np.ndarray]:
     """Random stratified split for the within-subject (subject-dependent) setting.
 
@@ -94,12 +127,24 @@ def subject_dependent_split(
     only valid when the research question is within-subject decoding.
     """
 
-    labels, _ = _as_arrays(y, subjects)
+    labels, identities = _as_arrays(y, subjects)
     rng = np.random.default_rng(seed)
-    all_idx = np.arange(len(labels))
-    train_val, test = _stratified_holdout(all_idx, labels, test_fraction, rng)
-    train, val = _stratified_holdout(train_val, labels, val_fraction, rng)
-    return {"train_idx": train, "val_idx": val, "test_idx": test}
+    trials = trial_groups(identities, sessions, trial_ids)
+    parts = {key: [] for key in ("train_idx", "val_idx", "test_idx")}
+    for subject in np.unique(identities):
+        indices = np.where(identities == subject)[0]
+        if trials is None:
+            train_val, test = _stratified_holdout(indices, labels, test_fraction, rng)
+            train, val = _stratified_holdout(train_val, labels, val_fraction, rng)
+        else:
+            train_val, test = _group_holdout(indices, labels, trials, test_fraction, rng)
+            train, val = _group_holdout(train_val, labels, trials, val_fraction, rng)
+        for key, value in zip(parts, (train, val, test)):
+            parts[key].extend(value.tolist())
+    result = {key: np.sort(np.asarray(value, dtype=int)) for key, value in parts.items()}
+    if any(len(value) == 0 for value in result.values()):
+        raise ValueError("独立试次不足以划分训练、验证和测试集")
+    return result
 
 
 def assert_no_subject_leakage(fold: dict[str, Any], subjects: Sequence[str]) -> None:

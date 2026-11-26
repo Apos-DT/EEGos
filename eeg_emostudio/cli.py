@@ -208,7 +208,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
             model_name=args.model,
             config=config,
             class_names=class_names,
-            output_dir=output_dir,
+            output_dir=output_dir, trial_ids=data.get("trial_ids"), sessions=data.get("sessions"),
         )
         matrix_path = plot_confusion_matrix(
             result["overall"]["confusion_matrix"],
@@ -240,12 +240,25 @@ def _cmd_train(args: argparse.Namespace) -> int:
             model_name=args.model,
             config=config,
             class_names=class_names,
-            output_dir=output_dir,
+            output_dir=output_dir, trial_ids=data.get("trial_ids"), sessions=data.get("sessions"),
         )
         print(
             f"[train] subject-dependent accuracy={result['test_metrics']['accuracy']:.4f} "
             f"macroF1={result['test_metrics']['macro_f1']:.4f}"
         )
+    if args.setting != "loso":
+        render_loso_report(result, output_dir / "report.html", title="EEG 情绪识别被试内训练报告")
+    from datetime import datetime
+    from .data.manifest import sha256_file
+    metadata_path = output_dir / "run_meta.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path.exists() else {}
+    metadata.update({"status": "success", "finished_at": datetime.now().isoformat(),
+                     "dataset": str(Path(args.data).resolve()), "dataset_sha256": data["sha256"],
+                     "evaluation_version": 2,
+                     "artifacts": {p.name: sha256_file(p) for p in output_dir.iterdir() if p.is_file() and p.name != "run_meta.json"}})
+    temporary = metadata_path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(metadata_path)
     print(f"  report: {(output_dir / 'report.html').resolve()}")
     return 0
 
